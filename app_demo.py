@@ -682,4 +682,6 @@ if __name__ == "__main__":
         print("\n Para cambiar a modo REAL:")
         print("   set MODO_OPERACION=REAL && python app_demo_fixed.py")
 
-    app.run(debug=True, host="0.0.0.0", port=8050)
+    # Obtener puerto desde variable de entorno (Render usa PORT)
+    port = int(os.environ.get("PORT", 8050))
+    app.run(debug=False, host="0.0.0.0", port=port)

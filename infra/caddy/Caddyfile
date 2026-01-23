@@ -1,0 +1,18 @@
+{
+	# CA interna (no requiere dominio público)
+	local_certs
+}
+
+# HTTPS para acceder por nombre del PC (si resuelve en tu red)
+https://laptop-5v0qtdi3:8443 {
+	tls internal
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8050
+}
+
+# HTTPS para acceder por IP (útil en celulares si no resuelven el hostname)
+https://192.168.10.247:8443 {
+	tls internal
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:8050
+}

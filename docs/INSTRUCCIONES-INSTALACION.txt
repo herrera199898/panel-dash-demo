@@ -1,0 +1,127 @@
+====================================================================
+INSTRUCCIONES DE INSTALACION Y EJECUCION - PANEL DASH FRUTISIMA
+====================================================================
+
+Este proyecto incluye scripts automaticos para instalar y ejecutar
+la aplicacion facilmente en Windows, incluso en equipos sin nada
+instalado previamente.
+
+OPCIONES DISPONIBLES:
+---------------------
+
+1. scripts\\instalar-y-ejecutar.bat (RECOMENDADO PARA PRINCIPIANTES)
+   - Script basico y sencillo
+   - Verifica si Python esta instalado
+   - Si Python no esta, intenta instalarlo automaticamente (winget); si no, muestra instrucciones
+   - Instala todas las dependencias automaticamente
+   - Ejecuta la aplicacion
+
+2. scripts\\instalar-y-ejecutar-avanzado.bat (RECOMENDADO SI TIENES WINGET)
+   - Script avanzado con instalacion automatica
+   - Intenta instalar Python automaticamente (requiere winget)
+   - Intenta instalar ODBC Driver automaticamente
+   - Instala todas las dependencias
+   - Ejecuta la aplicacion
+
+COMO USAR:
+----------
+
+1. Doble clic en el archivo .bat que prefieras usar (dentro de la carpeta scripts)
+
+2. El script hara lo siguiente:
+   * Verificara si Python esta instalado
+   * Si no esta, te dara instrucciones o lo instalara automaticamente
+   * Actualizara pip (gestor de paquetes de Python)
+   * Instalara todas las dependencias necesarias
+   * Verificara el ODBC Driver para SQL Server
+   * Ejecutara la aplicacion
+
+3. La aplicacion se abrira en:
+   http://localhost:8050
+
+4. Para detener la aplicacion, presiona Ctrl+C en la ventana
+
+REQUISITOS PREVIOS (si no se instalan automaticamente):
+--------------------------------------------------------
+
+1. Python 3.8 o superior
+   - Descarga: https://www.python.org/downloads/
+   - IMPORTANTE: Marca "Add Python to PATH" durante la instalacion
+
+2. ODBC Driver 18 for SQL Server (para conectar a la base de datos)
+   - Descarga: https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server
+   - Busca "ODBC Driver 18 for SQL Server" para Windows
+   - Si tienes winget, el instalador intentará instalarlo automáticamente (puede requerir admin)
+
+NOTAS IMPORTANTES:
+------------------
+
+- La primera vez que ejecutes el script, la instalacion de dependencias
+  puede tardar varios minutos (especialmente si descargas Python)
+
+- Si Python no esta en el PATH despues de instalarlo, puede que necesites:
+  * Cerrar y volver a abrir la terminal, o
+  * Reiniciar el equipo
+
+- Si tienes problemas, ejecuta el script como Administrador:
+  * Clic derecho en el .bat -> "Ejecutar como administrador"
+- Si la ventana se cierra de golpe, ejecuta el .bat desde una consola (CMD/PowerShell) para ver el error:
+  * Abre CMD en la carpeta del proyecto y corre: scripts\\instalar-y-ejecutar.bat
+
+- El script debe estar en la misma carpeta que app.py y requirements.txt
+- (Alternativa) Si usas los .bat dentro de scripts, tambien funciona: el script se ubica solo.
+
+SOLUCION DE PROBLEMAS:
+----------------------
+
+1. Error "Python no se reconoce como comando interno"
+   -> Python no esta instalado o no esta en el PATH
+   -> Instala Python y marca "Add Python to PATH"
+   -> O usa el script avanzado que lo instala automaticamente
+
+2. Error al instalar dependencias
+   -> Verifica tu conexion a Internet
+   -> Intenta ejecutar como Administrador
+
+3. Error de conexion a la base de datos
+   -> Verifica que el ODBC Driver 18 este instalado
+   -> Verifica la conexion de red al servidor de base de datos
+
+5. Se abre pero muestra todo en 0 / N/A
+   -> Normalmente significa que NO pudo conectarse a la base de datos (ODBC/credenciales/red).
+   -> Revisa si el ODBC Driver 18 quedó instalado y si el archivo `.env` tiene los datos correctos.
+
+4. La aplicacion no se abre en el navegador
+   -> Abre manualmente: http://localhost:8050
+   -> Verifica que no haya otro programa usando el puerto 8050
+
+
+ARRANQUE AUTOMATICO (HTTPS CON CADDY):
+-------------------------------------
+
+Objetivo: que al iniciar sesión en Windows ya est\u00e9 disponible:
+   https://laptop-5v0qtdi3:8443/
+
+1) Instalar el certificado (solo 1 vez, como administrador):
+   - Ejecuta: downloads\\install-caddy-ca.bat
+   - Alternativa: el instalador `scripts\\instalar-y-ejecutar.bat` intentará hacerlo (pedirá UAC/admin)
+
+2) Instalar auto-inicio (sin permisos de admin):
+   - Ejecuta PowerShell:
+     scripts\\startup\\install-startup-shortcut.ps1
+
+3) Reinicia sesi\u00f3n o el PC. Se iniciar\u00e1n:
+   - Caddy (puerto 8443) y la URL HTTPS
+   - (Opcional) La app Python/Dash se inicia manualmente por el usuario
+
+Para iniciar la app Python/Dash manualmente:
+   - Ejecuta: scripts\\run-panel.bat
+   - (Opcional) Crear acceso directo en el Escritorio:
+     scripts\\startup\\install-desktop-runner.ps1
+
+Para desinstalar el auto-inicio:
+   scripts\\startup\\uninstall-startup-shortcut.ps1
+
+====================================================================
+
+

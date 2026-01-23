@@ -1,0 +1,9 @@
+﻿services:
+  - type: web
+    name: panel-dash-demo
+    env: python
+    buildCommand: pip install -r requirements_render.txt && python demo_db_generator.py
+    startCommand: python app_demo.py
+    envVars:
+      - key: MODO_OPERACION
+        value: DEMO

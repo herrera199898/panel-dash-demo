@@ -1,0 +1,35 @@
+# Base de datos local (se crea automáticamente)
+demo_database.db
+*.db
+
+# Python - archivos temporales
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Logs
+logs/
+*.log
+
+# Environment (contraseñas y configuración local)
+.env
+.env.local
+.env.*
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Backups
+*.bak
+*.backup
+*~

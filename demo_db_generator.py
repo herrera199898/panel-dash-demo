@@ -199,16 +199,22 @@ class DemoDatabaseGenerator:
 
             # Datos de producción
             unidades_planificadas = random.randint(500, 2000)
-            unidades_vaciadas = random.randint(0, unidades_planificadas)
+            # Para el primer lote (i==0), asegurar que tenga datos recientes y progreso
+            if i == 0:
+                # Lote activo: entre 30% y 80% completado
+                unidades_vaciadas = int(unidades_planificadas * random.uniform(0.3, 0.8))
+                fecha_lectura = now - timedelta(minutes=random.randint(1, 60))  # Última hora
+            else:
+                unidades_vaciadas = random.randint(0, unidades_planificadas)
+                # Fechas aleatorias en el pasado
+                dias_atras = random.randint(1, 30)
+                fecha_lectura = now - timedelta(days=dias_atras, hours=random.randint(0, 23))
+            
             unidades_restantes = unidades_planificadas - unidades_vaciadas
 
             # Peso en gramos (convertir a kg después)
             peso_promedio_kg = random.uniform(0.8, 2.5)  # kg por caja
             peso_netto = unidades_vaciadas * peso_promedio_kg * 1000  # en gramos
-
-            # Fechas
-            dias_atras = random.randint(0, 30)
-            fecha_lectura = now - timedelta(days=dias_atras, hours=random.randint(0, 23))
 
             lote_data = {
                 "codigo_proveedor": proveedor["codigo"],
@@ -274,12 +280,12 @@ class DemoDatabaseGenerator:
             # Usar lote específico
             lote = lote_actual
         else:
-            # Obtener un lote aleatorio de los existentes
+            # Obtener el lote MÁS RECIENTE (no aleatorio) para mostrar datos actuales
             cursor.execute("""
                 SELECT CodiceProduttore, CodiceProcesso, CodiceLotto, UnitaPianificate,
                        UnitaIn, Varieta, PesoNetto, ProductorNombre
                 FROM VW_LottiIngresso
-                ORDER BY RANDOM() LIMIT 1
+                ORDER BY DataLettura DESC LIMIT 1
             """)
             row = cursor.fetchone()
             if row:

@@ -23,12 +23,52 @@ except (ImportError, AttributeError):
 
 _EXPORTADOR_PLAN = None
 
+def adapt_sql_query(query):
+    """
+    Adapta consultas SQL Server a SQLite
+    Convierte SELECT TOP N a SELECT ... LIMIT N
+    """
+    try:
+        from config_demo import is_demo_mode
+        if is_demo_mode():
+            # Convertir SELECT TOP N a LIMIT N
+            import re
+            # Patrón: SELECT TOP número
+            pattern = r'SELECT\s+TOP\s+(\d+)\s+'
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                limit_num = match.group(1)
+                # Reemplazar SELECT TOP N con SELECT
+                query = re.sub(pattern, 'SELECT ', query, flags=re.IGNORECASE)
+                # Agregar LIMIT al final (después de ORDER BY si existe, o al final)
+                query_upper = query.upper()
+                if 'ORDER BY' in query_upper:
+                    # Encontrar la posición del último ORDER BY
+                    order_by_pos = query_upper.rfind('ORDER BY')
+                    # Encontrar el final de la cláusula ORDER BY (hasta el final o hasta WHERE/GROUP BY/HAVING antes)
+                    # Simplemente agregar LIMIT al final
+                    query = query.rstrip(';').rstrip() + f' LIMIT {limit_num}'
+                else:
+                    # Agregar LIMIT al final
+                    query = query.rstrip(';').rstrip() + f' LIMIT {limit_num}'
+        return query
+    except Exception as e:
+        logger.debug(f"Error adaptando query SQL: {e}")
+        return query
+
+def read_sql_adapted(query, conn, **kwargs):
+    """
+    Wrapper para pd.read_sql que adapta automáticamente consultas SQL Server a SQLite
+    """
+    adapted_query = adapt_sql_query(query)
+    return pd.read_sql(adapted_query, conn, **kwargs)
+
 def get_data():
     """Obtiene los últimos 50 registros de VW_MON_Partita_Corrente"""
     try:
         conn = get_connection()
         query = "SELECT TOP 50 * FROM VW_MON_Partita_Corrente ORDER BY 1 DESC"
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         return df
     except Exception as e:
@@ -91,7 +131,7 @@ def get_produttore_dict():
         SELECT PRO_Codice_Produttore, PRO_Produttore
         FROM ANA_Produttore
         """
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         if df.empty:
             return {}
@@ -110,7 +150,7 @@ def get_detalle_lotti_ingresso():
         
         # Primero obtener todas las columnas para identificar las columnas disponibles
         query_test = "SELECT TOP 1 * FROM VW_LottiIngresso"
-        df_test = pd.read_sql(query_test, conn)
+        df_test = read_sql_adapted(query_test, conn)
         columnas_disponibles = [col.lower() for col in df_test.columns]
         
         # Buscar columna de productor (excluyendo CodiceProduttore)
@@ -163,7 +203,7 @@ def get_detalle_lotti_ingresso():
         ORDER BY CodiceProcesso, DataLettura DESC
         """
         
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         
         if df.empty:
@@ -278,7 +318,7 @@ def get_current_record():
         FROM VW_MON_Partita_Corrente 
         ORDER BY 1 DESC
         """
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         if not df.empty:
             unita_pianificate = float(df.iloc[0]['UnitaPianificate']) if pd.notna(df.iloc[0]['UnitaPianificate']) else 0
@@ -337,8 +377,7 @@ def get_current_lote_from_detalle():
         FROM VW_LottiIngresso
         ORDER BY DataLettura DESC
         """
-        
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         
         if df.empty:
@@ -377,7 +416,7 @@ def get_kg_por_turno():
         FROM VW_MON_Produttivita_Turno_Corrente
         ORDER BY 1 DESC
         """
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         if not df.empty:
             peso_svuotato_gramos = float(df.iloc[0]['PesoSvuotato']) if pd.notna(df.iloc[0]['PesoSvuotato']) else 0
@@ -404,7 +443,7 @@ def get_turno_corrente_info():
         FROM VW_MON_Produttivita_Turno_Corrente
         ORDER BY DataAcquisizione DESC
         """
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         if df.empty:
             return None
@@ -450,7 +489,7 @@ def get_cajas_por_turno():
         FROM VW_MON_Produttivita_Turno_Corrente
         ORDER BY 1 DESC
         """
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         if not df.empty:
             return int(df.iloc[0]["UnitaSvuotate"]) if pd.notna(df.iloc[0]["UnitaSvuotate"]) else 0
@@ -469,7 +508,7 @@ def get_cajas_por_hora_turno():
         FROM VW_MON_Produttivita_Turno_Corrente
         ORDER BY 1 DESC
         """
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         if not df.empty:
             return int(df.iloc[0]["UnitaSvuotateOra"]) if pd.notna(df.iloc[0]["UnitaSvuotateOra"]) else 0
@@ -488,7 +527,7 @@ def get_fermo_macchina_minuti():
         FROM VW_MON_Produttivita_Turno_Corrente
         ORDER BY DataAcquisizione DESC
         """
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         if df.empty:
             return 0.0
@@ -515,7 +554,7 @@ def get_lotti_inizio_fine_map(max_rows: int = 800):
         FROM VW_MON_Partita_Storico_Agent
         ORDER BY DataAcquisizione DESC
         """
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         if df.empty:
             return {}
@@ -555,7 +594,7 @@ def get_kg_por_hora_turno():
         FROM VW_MON_Produttivita_Turno_Corrente
         ORDER BY 1 DESC
         """
-        df = pd.read_sql(query, conn)
+        df = read_sql_adapted(query, conn)
         conn.close()
         if not df.empty:
             gramos = float(df.iloc[0]["PesoSvuotatoOra"]) if pd.notna(df.iloc[0]["PesoSvuotatoOra"]) else 0
@@ -588,7 +627,7 @@ def get_kg_lote_vw_partita(lotto_codice, processo_codice):
         WHERE LTRIM(RTRIM(LottoCodice)) = ? AND LTRIM(RTRIM(ProcessoCodice)) = ?
         ORDER BY 1 DESC
         """
-        df = pd.read_sql(query, conn, params=[lotto_codice, processo_codice])
+        df = read_sql_adapted(query, conn, params=[lotto_codice, processo_codice])
         conn.close()
         
         if not df.empty:
@@ -624,7 +663,7 @@ def get_kg_total_lote(lotto_codice):
         FROM VW_LottiIngresso
         WHERE LTRIM(RTRIM(CodiceLotto)) = ?
         """
-        df = pd.read_sql(query, conn, params=[lotto_codice])
+        df = read_sql_adapted(query, conn, params=[lotto_codice])
         
         # Si no encuentra, intentar sin TRIM
         if df.empty or pd.isna(df.iloc[0]['PesoNettoTotal']) or df.iloc[0]['PesoNettoTotal'] == 0:
@@ -671,7 +710,7 @@ def get_kg_por_caja_lote(lotto_codice=None):
             WHERE DataLettura = (SELECT MAX(DataLettura) FROM VW_LottiIngresso)
             ORDER BY CodiceLotto DESC
             """
-            df_lote = pd.read_sql(query_lote, conn)
+            df_lote = read_sql_adapted(query_lote, conn)
             
             if df_lote.empty:
                 conn.close()
@@ -740,7 +779,7 @@ def get_kg_lote(lotto_codice, processo_codice):
         WHERE LTRIM(RTRIM(LottoCodice)) = ? AND LTRIM(RTRIM(ProcessoCodice)) = ?
         ORDER BY 1 DESC
         """
-        df = pd.read_sql(query, conn, params=[lotto_codice, processo_codice])
+        df = read_sql_adapted(query, conn, params=[lotto_codice, processo_codice])
         
         # Si no encuentra, intentar sin TRIM (por si acaso)
         if df.empty:
@@ -860,7 +899,7 @@ def get_exportador_nombre(lotto_codice):
         columnas_ana = []
         try:
             query_test = "SELECT TOP 1 * FROM ANA_Esportatore"
-            df_test = pd.read_sql(query_test, conn)
+            df_test = read_sql_adapted(query_test, conn)
             columnas_ana = list(df_test.columns)
         except Exception as e:
             # Si ANA_Esportatore no existe, intentar otras tablas
@@ -875,7 +914,7 @@ def get_exportador_nombre(lotto_codice):
         for tabla in tablas_posibles_unita:
             try:
                 query_test = f"SELECT TOP 1 * FROM {tabla}"
-                df_test = pd.read_sql(query_test, conn)
+                df_test = read_sql_adapted(query_test, conn)
                 columnas = [col.lower() for col in df_test.columns]
                 columnas_originales = list(df_test.columns)
                 
@@ -932,7 +971,7 @@ def get_exportador_nombre(lotto_codice):
                 ORDER BY ana.ESP_Esportatore
                 """.format(tabla_unita, lote_col, placeholders)
                 
-                df = pd.read_sql(query, conn, params=lotto_variants)
+                df = read_sql_adapted(query, conn, params=lotto_variants)
                 
                 if df.empty:
                     # Intento adicional sin TRIM para casos raros de comparación
@@ -993,7 +1032,7 @@ def get_exportador_nombre(lotto_codice):
                 for tabla_esp in tablas_posibles_esp:
                     try:
                         query_test = f"SELECT TOP 1 * FROM {tabla_esp}"
-                        df_test = pd.read_sql(query_test, conn)
+                        df_test = read_sql_adapted(query_test, conn)
                         columnas = [col.lower() for col in df_test.columns]
                         
                         if ('esp_id' in columnas or 'ESP_ID' in df_test.columns) and \
@@ -1009,7 +1048,7 @@ def get_exportador_nombre(lotto_codice):
                             ORDER BY esp.ESP_Esportatore
                             """.format(tabla_unita, tabla_esp, lote_col, placeholders)
                             
-                            df = pd.read_sql(query, conn, params=lotto_variants)
+                            df = read_sql_adapted(query, conn, params=lotto_variants)
                             
                             if df.empty:
                                 query2 = """

@@ -4,6 +4,7 @@ Módulo de funciones para obtener datos de la base de datos
 import pandas as pd
 import logging
 import importlib
+import datetime
 
 logger = logging.getLogger(__name__)
 import plotly.graph_objects as go
@@ -470,7 +471,23 @@ def get_turno_corrente_info():
 
         turno_inicio_dt = None
         try:
-            turno_inicio_dt = turno_inicio.to_pydatetime() if hasattr(turno_inicio, "to_pydatetime") else turno_inicio
+            # Manejar diferentes tipos de datos (pandas Timestamp, datetime, string)
+            if hasattr(turno_inicio, "to_pydatetime"):
+                turno_inicio_dt = turno_inicio.to_pydatetime()
+            elif isinstance(turno_inicio, datetime.datetime):
+                turno_inicio_dt = turno_inicio
+            elif isinstance(turno_inicio, str):
+                # Intentar parsear string ISO
+                try:
+                    turno_inicio_dt = datetime.datetime.fromisoformat(turno_inicio.replace('Z', '+00:00'))
+                except:
+                    # Intentar parsear formato SQLite
+                    try:
+                        turno_inicio_dt = datetime.datetime.strptime(turno_inicio, "%Y-%m-%d %H:%M:%S")
+                    except:
+                        turno_inicio_dt = None
+            else:
+                turno_inicio_dt = None
         except Exception:
             turno_inicio_dt = None
 
@@ -863,6 +880,27 @@ def get_exportador_nombre(lotto_codice):
         str: Nombre del exportador o "N/A" si no se encuentra
     """
     try:
+        # Verificar si estamos en modo demo y simplificar la consulta
+        try:
+            from config_demo import is_demo_mode, get_database_config
+            config_db = get_database_config()
+            # Verificar tanto por is_demo_mode() como por el tipo de BD
+            if is_demo_mode() or config_db.get("type") == "sqlite":
+                result = get_exportador_nombre_demo(lotto_codice)
+                if result and result != "N/A":
+                    return result
+                # Si no encontró, continuar con la lógica normal (puede que el lote no exista aún)
+        except Exception as e:
+            # Si falla la verificación, intentar con demo de todas formas si estamos usando database_demo
+            try:
+                import sys
+                if 'database_demo' in sys.modules:
+                    result = get_exportador_nombre_demo(lotto_codice)
+                    if result and result != "N/A":
+                        return result
+            except:
+                pass
+        
         if not lotto_codice or lotto_codice == "N/A":
             return "N/A"
         
@@ -1105,4 +1143,113 @@ def get_exportador_nombre(lotto_codice):
         return "N/A"
     except Exception as e:
         # En caso de error, retornar N/A sin interrumpir la aplicación
+        return "N/A"
+
+def get_exportador_nombre_demo(lotto_codice):
+    """Versión simplificada para modo DEMO (SQLite)
+    Obtiene el exportador directamente desde VW_MON_Partita_Corrente o VW_LottiIngresso
+    """
+    # #region agent log
+    import json
+    import os
+    try:
+        log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\debug.log"
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:entry","message":"Function entry","data":{"lotto_codice":str(lotto_codice)},"timestamp":int(__import__("time").time()*1000)}) + "\n")
+    except: pass
+    # #endregion
+    
+    try:
+        if not lotto_codice or lotto_codice == "N/A":
+            return "N/A"
+        
+        lotto_codice = str(lotto_codice).strip()
+        conn = get_connection_unitec()
+        
+        # Método 1: Buscar en VW_MON_Partita_Corrente (tabla principal de producción actual)
+        try:
+            query = """
+            SELECT EsportatoreDescrizione
+            FROM VW_MON_Partita_Corrente
+            WHERE LottoCodice = ?
+            LIMIT 1
+            """
+            df = read_sql_adapted(query, conn, params=[lotto_codice])
+            # #region agent log
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:method1","message":"Query VW_MON_Partita_Corrente result","data":{"found":not df.empty,"rows":len(df) if not df.empty else 0},"timestamp":int(__import__("time").time()*1000)}) + "\n")
+            except: pass
+            # #endregion
+            if not df.empty and 'EsportatoreDescrizione' in df.columns:
+                exportador = str(df.iloc[0]['EsportatoreDescrizione']).strip()
+                if exportador and exportador.upper() != "N/A":
+                    conn.close()
+                    # #region agent log
+                    try:
+                        with open(log_path, "a", encoding="utf-8") as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:success","message":"Exportador found","data":{"exportador":exportador},"timestamp":int(__import__("time").time()*1000)}) + "\n")
+                    except: pass
+                    # #endregion
+                    return exportador
+        except Exception as e1:
+            # #region agent log
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:method1_error","message":"Error in method1","data":{"error":str(e1)},"timestamp":int(__import__("time").time()*1000)}) + "\n")
+            except: pass
+            # #endregion
+            pass
+        
+        # Método 2: Buscar en VW_LottiIngresso (fallback)
+        try:
+            query2 = """
+            SELECT EsportatoreDescrizione
+            FROM VW_LottiIngresso
+            WHERE CodiceLotto = ?
+            ORDER BY DataLettura DESC
+            LIMIT 1
+            """
+            df2 = read_sql_adapted(query2, conn, params=[lotto_codice])
+            # #region agent log
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:method2","message":"Query VW_LottiIngresso result","data":{"found":not df2.empty,"rows":len(df2) if not df2.empty else 0},"timestamp":int(__import__("time").time()*1000)}) + "\n")
+            except: pass
+            # #endregion
+            if not df2.empty and 'EsportatoreDescrizione' in df2.columns:
+                exportador = str(df2.iloc[0]['EsportatoreDescrizione']).strip()
+                if exportador and exportador.upper() != "N/A":
+                    conn.close()
+                    # #region agent log
+                    try:
+                        with open(log_path, "a", encoding="utf-8") as f:
+                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:success2","message":"Exportador found in fallback","data":{"exportador":exportador},"timestamp":int(__import__("time").time()*1000)}) + "\n")
+                    except: pass
+                    # #endregion
+                    return exportador
+        except Exception as e2:
+            # #region agent log
+            try:
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:method2_error","message":"Error in method2","data":{"error":str(e2)},"timestamp":int(__import__("time").time()*1000)}) + "\n")
+            except: pass
+            # #endregion
+            pass
+        
+        conn.close()
+        # #region agent log
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:not_found","message":"Exportador not found","data":{},"timestamp":int(__import__("time").time()*1000)}) + "\n")
+        except: pass
+        # #endregion
+        return "N/A"
+    except Exception as e:
+        # #region agent log
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:exception","message":"Exception in function","data":{"error":str(e)},"timestamp":int(__import__("time").time()*1000)}) + "\n")
+        except: pass
+        # #endregion
         return "N/A"

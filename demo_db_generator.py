@@ -106,7 +106,8 @@ class DemoDatabaseGenerator:
                 Varieta TEXT,
                 PesoNetto REAL,
                 DataLettura DATETIME,
-                ProductorNombre TEXT
+                ProductorNombre TEXT,
+                EsportatoreDescrizione TEXT
             )
             """,
 
@@ -120,7 +121,8 @@ class DemoDatabaseGenerator:
                 UnitaPianificate INTEGER,
                 UnitaSvuotate INTEGER,
                 PesoNetto REAL,
-                DataAcquisizione DATETIME
+                DataAcquisizione DATETIME,
+                EsportatoreDescrizione TEXT
             )
             """,
 
@@ -197,8 +199,8 @@ class DemoDatabaseGenerator:
             proceso = random.choice(self.empresa_config["procesos"])
             variedad = random.choice(producto["variedades"])
 
-            # Datos de producción
-            unidades_planificadas = random.randint(500, 2000)
+            # Datos de producción (cantidades reducidas para pruebas más rápidas)
+            unidades_planificadas = random.randint(50, 200)  # Reducido de 500-2000 a 50-200
             # Para el primer lote (i==0), asegurar que tenga datos recientes y progreso
             if i == 0:
                 # Lote activo: entre 30% y 80% completado
@@ -232,12 +234,16 @@ class DemoDatabaseGenerator:
 
             lotes_data.append(lote_data)
 
+            # Obtener exportador para este lote
+            exportador = random.choice(self.exportadores)
+            exportador_nombre = exportador["nombre"]
+            
             # Insertar en VW_LottiIngresso
             cursor.execute("""
                 INSERT INTO VW_LottiIngresso
                 (CodiceProduttore, CodiceProcesso, CodiceLotto, UnitaPianificate,
-                 UnitaIn, UnitaRestanti, Varieta, PesoNetto, DataLettura, ProductorNombre)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 UnitaIn, UnitaRestanti, Varieta, PesoNetto, DataLettura, ProductorNombre, EsportatoreDescrizione)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 lote_data["codigo_proveedor"],
                 lote_data["codigo_proceso"],
@@ -248,7 +254,8 @@ class DemoDatabaseGenerator:
                 lote_data["variedad"],
                 lote_data["peso_netto"],
                 lote_data["fecha_lectura"],
-                lote_data["proveedor_nombre"]
+                lote_data["proveedor_nombre"],
+                exportador_nombre
             ))
 
             # Insertar lote en PROD_Lotto para relaciones
@@ -283,7 +290,7 @@ class DemoDatabaseGenerator:
             # Obtener el lote MÁS RECIENTE (no aleatorio) para mostrar datos actuales
             cursor.execute("""
                 SELECT CodiceProduttore, CodiceProcesso, CodiceLotto, UnitaPianificate,
-                       UnitaIn, Varieta, PesoNetto, ProductorNombre
+                       UnitaIn, Varieta, PesoNetto, ProductorNombre, EsportatoreDescrizione
                 FROM VW_LottiIngresso
                 ORDER BY DataLettura DESC LIMIT 1
             """)
@@ -297,27 +304,31 @@ class DemoDatabaseGenerator:
                     "unidades_vaciadas": row[4],
                     "variedad": row[5],
                     "peso_netto": row[6],
-                    "proveedor_nombre": row[7]
+                    "proveedor_nombre": row[7],
+                    "exportador_nombre": row[8] if len(row) > 8 else random.choice(self.exportadores)["nombre"]
                 }
             else:
-                # Datos por defecto si no hay lotes
+                # Datos por defecto si no hay lotes (cantidades reducidas)
                 lote = {
                     "codigo_proveedor": "CSG001",
                     "codigo_proceso": "CAL001",
                     "codigo_lote": "0001",
-                    "unidades_planificadas": 1000,
-                    "unidades_vaciadas": 450,
+                    "unidades_planificadas": 100,  # Reducido de 1000 a 100
+                    "unidades_vaciadas": 45,  # Reducido de 450 a 45
                     "variedad": "Gala Roja",
-                    "peso_netto": 450 * 1.2 * 1000,  # 1.2 kg promedio por caja
+                    "peso_netto": 45 * 1.2 * 1000,  # 1.2 kg promedio por caja
                     "proveedor_nombre": "Campo Verde Ltda."
                 }
 
+        # Obtener exportador (del lote o aleatorio si no existe)
+        exportador_nombre = lote.get("exportador_nombre") or random.choice(self.exportadores)["nombre"]
+        
         # Insertar datos actuales
         cursor.execute("""
             INSERT INTO VW_MON_Partita_Corrente
             (ProduttoreDescrizione, VarietaDescrizione, ProcessoCodice, LottoCodice,
-             UnitaPianificate, UnitaSvuotate, PesoNetto, DataAcquisizione)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             UnitaPianificate, UnitaSvuotate, PesoNetto, DataAcquisizione, EsportatoreDescrizione)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             lote["proveedor_nombre"],
             lote["variedad"],
@@ -326,7 +337,8 @@ class DemoDatabaseGenerator:
             lote["unidades_planificadas"],
             lote["unidades_vaciadas"],
             lote["peso_netto"],
-            datetime.now()
+            datetime.now(),
+            exportador_nombre
         ))
 
         self.conn.commit()
@@ -354,8 +366,8 @@ class DemoDatabaseGenerator:
         if horas_transcurridas < 0:
             horas_transcurridas = 0
 
-        # Estimaciones por hora
-        cajas_por_hora = random.randint(50, 150)
+        # Estimaciones por hora (reducidas para pruebas más rápidas)
+        cajas_por_hora = random.randint(20, 60)  # Reducido de 50-150 a 20-60
         kg_por_hora = cajas_por_hora * random.uniform(1.0, 2.0)
 
         # Totales acumulados
@@ -459,8 +471,8 @@ class DemoDatabaseGenerator:
             peso_actual = row[6]
 
             if incrementar_progreso and unidades_actuales < unidades_planificadas:
-                # Incrementar progreso (simular producción)
-                incremento_cajas = random.randint(1, 5)
+                # Incrementar progreso (simular producción) - incremento mayor para pruebas más rápidas
+                incremento_cajas = random.randint(2, 8)  # Aumentado de 1-5 a 2-8 para avanzar más rápido
                 nuevas_unidades = min(unidades_actuales + incremento_cajas, unidades_planificadas)
 
                 # Calcular nuevo peso (estimación)
@@ -474,7 +486,7 @@ class DemoDatabaseGenerator:
                     WHERE LottoCodice = ?
                 """, (nuevas_unidades, nuevo_peso, datetime.now(), row[3]))
 
-                # También actualizar en VW_LottiIngresso
+                # También actualizar en VW_LottiIngresso (mantener exportador existente)
                 cursor.execute("""
                     UPDATE VW_LottiIngresso
                     SET UnitaIn = ?, UnitaRestanti = ?, PesoNetto = ?, DataLettura = ?

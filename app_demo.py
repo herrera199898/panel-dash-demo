@@ -1,4 +1,4 @@
-"""
+﻿"""
 Aplicación principal en Dash - VERSIÓN DEMO CORREGIDA
 Dashboard completo con datos ficticios igual que el original
 """
@@ -30,7 +30,7 @@ try:
 except Exception:
     pass
 
-from config_demo import get_database_config, APP_CONFIG, is_demo_mode
+from config_demo import get_database_config, APP_CONFIG, is_demo_mode, is_demo_simulation_enabled
 
 # Importar DataTable
 from dash import dash_table
@@ -342,6 +342,9 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
     # #endregion
     try:
         now = datetime.datetime.now()
+        cajas_por_hora_turno = 0
+        kg_por_hora_turno = 0
+
         hora = now.strftime("%d/%m/%Y %H:%M:%S")
 
         # Obtener datos actuales
@@ -526,7 +529,7 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
             ),
             construir_metric_card(
                 "Cajas por Hora",
-                formatear_entero(cajas_vaciadas // max(1, (datetime.datetime.now().hour - 8))),  # Simulado
+                formatear_entero(cajas_por_hora_turno),
                 "cajas/h",
                 accent="#7c3aed",
                 icon_svg=BOXES_EMPTIED_ICON_SVG,
@@ -542,7 +545,7 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
             ),
             construir_metric_card(
                 "Kg por Hora",
-                f"{round(kg_totales // max(1, (datetime.datetime.now().hour - 8))):,}".replace(",", ".") if kg_totales else "0",
+                f"{round(kg_por_hora_turno):,}".replace(",", ".") if kg_por_hora_turno else "0",
                 "kg/h",
                 accent="#10b981",
                 icon_svg=CAPACITY_ICON_SVG,
@@ -1010,7 +1013,7 @@ def render_tab(tab_value):
 if __name__ == "__main__":
     print(f"[START] Iniciando {APP_CONFIG['title']}")
     print(f"[COMPANY] Empresa: {APP_CONFIG['empresa']}")
-    print(f"[MODE] Modo: {'DEMO' if is_demo_mode() else 'REAL'}")
+    print(f"[MODE] Modo: DEMO")
     print(f"[DB] Base de datos: {config_db['description']}")
 
     if is_demo_mode():
@@ -1030,7 +1033,6 @@ if __name__ == "__main__":
         sim_thread.start()
         print("[OK] Simulacion iniciada (actualizacion cada 30 segundos)")
         print("\n Para cambiar a modo REAL:")
-        print("   set MODO_OPERACION=REAL && python app_demo.py")
 
     # Obtener puerto desde variable de entorno (Render usa PORT)
     port = int(os.environ.get("PORT", 8050))

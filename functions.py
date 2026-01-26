@@ -1,4 +1,4 @@
-"""
+﻿"""
 Módulo de funciones para obtener datos de la base de datos
 """
 import pandas as pd
@@ -10,23 +10,19 @@ logger = logging.getLogger(__name__)
 import plotly.graph_objects as go
 
 # Importar configuración para determinar qué módulo de BD usar
-try:
-    from config_demo import get_database_config
-    config_db = get_database_config()
-    db_module_name = config_db["module"]
-    # Importar dinámicamente el módulo correcto
-    db_module = importlib.import_module(db_module_name)
-    get_connection = db_module.get_connection
-    get_connection_unitec = db_module.get_connection_unitec
-except (ImportError, AttributeError):
-    # Fallback a database.py si config_demo no está disponible
-    from database import get_connection, get_connection_unitec
+from config_demo import get_database_config
+config_db = get_database_config()
+db_module_name = config_db["module"]
+# Importar din?micamente el m?dulo correcto
+db_module = importlib.import_module(db_module_name)
+get_connection = db_module.get_connection
+get_connection_unitec = db_module.get_connection_unitec
 
 _EXPORTADOR_PLAN = None
 
 def adapt_sql_query(query):
     """
-    Adapta consultas SQL Server a SQLite
+    Adapta consultas a SQLite (demo)
     Convierte SELECT TOP N a SELECT ... LIMIT N
     """
     try:
@@ -59,7 +55,7 @@ def adapt_sql_query(query):
 
 def read_sql_adapted(query, conn, **kwargs):
     """
-    Wrapper para pd.read_sql que adapta automáticamente consultas SQL Server a SQLite
+    Wrapper para pd.read_sql que adapta consultas a SQLite (demo)
     """
     adapted_query = adapt_sql_query(query)
     return pd.read_sql(adapted_query, conn, **kwargs)

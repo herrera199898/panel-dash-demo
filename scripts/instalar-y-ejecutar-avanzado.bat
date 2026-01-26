@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 REM ===================================================================
 REM Script de instalación y ejecución automática AVANZADO
 REM Panel Dash Frutísima - Con instalación automática de Python
@@ -11,7 +11,6 @@ net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
     echo [!] Se requieren permisos de administrador para algunas operaciones.
-    echo Si necesita instalar Python o el ODBC Driver, ejecute este script
     echo como administrador (clic derecho - Ejecutar como administrador).
     echo.
 )
@@ -161,23 +160,17 @@ echo [OK] Todas las dependencias se instalaron correctamente.
 echo.
 
 :: ===================================================================
-:: PASO 5: Verificar ODBC Driver para SQL Server
 :: ===================================================================
-echo [5/6] Verificando ODBC Driver 18 for SQL Server...
 
-reg query "HKLM\SOFTWARE\ODBC\ODBCINST.INI\ODBC Driver 18 for SQL Server" >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
-    echo [!] ADVERTENCIA: ODBC Driver 18 for SQL Server no esta instalado.
     echo.
     
     :: Intentar instalar con winget si está disponible
     where winget >nul 2>&1
     if %errorlevel% equ 0 (
-        echo Intentando instalar ODBC Driver automaticamente...
         winget install Microsoft.ODBCDriver.18 --silent --accept-package-agreements --accept-source-agreements
         if %errorlevel% equ 0 (
-            echo [OK] ODBC Driver instalado correctamente.
         ) else (
             echo [!] No se pudo instalar automaticamente. Se requiere instalacion manual.
             echo.
@@ -197,7 +190,6 @@ if %errorlevel% neq 0 (
         pause >nul
     )
 ) else (
-    echo [OK] ODBC Driver 18 for SQL Server esta instalado.
 )
 echo.
 

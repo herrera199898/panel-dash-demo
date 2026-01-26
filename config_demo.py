@@ -1,68 +1,66 @@
 """
-Configuración para alternar entre modo REAL (SQL Server) y DEMO (SQLite)
+Configuracion DEMO (solo SQLite con datos ficticios)
 """
 import os
 
-# Modo de operación
-# Cambia esta variable para alternar entre modos:
-# - "REAL": Usa SQL Server (producción)
-# - "DEMO": Usa SQLite con datos ficticios
-MODO_OPERACION = os.environ.get("MODO_OPERACION", "DEMO").upper()
+# Siempre DEMO
+MODO_OPERACION = "DEMO"
+
+# Simulacion en modo demo
+# - "1": habilita actualizaciones automaticas en segundo plano
+# - "0": deja los datos estaticos (no se actualizan solos)
+DEMO_SIMULACION = os.environ.get("DEMO_SIMULACION", "0")
+
 
 def get_database_config():
-    """Retorna la configuración de base de datos según el modo"""
-    if MODO_OPERACION == "REAL":
-        # Configuración real (SQL Server)
-        return {
-            "type": "sqlserver",
-            "module": "database",  # importa database.py
-            "description": "Base de datos real (SQL Server)"
-        }
-    else:
-        # Configuración demo (SQLite)
-        return {
-            "type": "sqlite",
-            "module": "database_demo",  # importa database_demo.py
-            "description": "Base de datos demo (SQLite con datos ficticios)"
-        }
+    """Retorna la configuracion de base de datos demo (SQLite)."""
+    return {
+        "type": "sqlite",
+        "module": "database_demo",
+        "description": "Base de datos demo (SQLite con datos ficticios)",
+    }
+
 
 def is_demo_mode():
-    """Retorna True si está en modo demo"""
-    return MODO_OPERACION == "DEMO"
+    """Siempre True en este proyecto demo."""
+    return True
+
+
+def is_demo_simulation_enabled():
+    """Retorna True si la simulacion demo esta habilitada."""
+    return str(DEMO_SIMULACION).strip() in {"1", "true", "TRUE", "True"}
+
 
 def get_status_info():
-    """Retorna información del estado actual"""
+    """Retorna informacion del estado actual."""
     config = get_database_config()
     return {
         "modo": MODO_OPERACION,
         "tipo_bd": config["type"],
         "descripcion": config["description"],
-        "modulo": config["module"]
+        "modulo": config["module"],
     }
 
-# Configuración de la aplicación
+
+# Configuracion de la aplicacion
 APP_CONFIG = {
-    "title": "Panel Dash - AgroIndustria XYZ" if is_demo_mode() else "Panel Frutísima",
-    "empresa": "AgroIndustria XYZ S.A." if is_demo_mode() else "Frutísima",
-    "description": "Demo de Dashboard de Producción" if is_demo_mode() else "Panel de Control en Tiempo Real"
+    "title": "Panel Dash - AgroIndustria XYZ",
+    "empresa": "AgroIndustria XYZ S.A.",
+    "description": "Demo de Dashboard de Produccion",
 }
 
+
 if __name__ == "__main__":
-    # Mostrar configuración actual
     status = get_status_info()
-    print("🔧 Configuración del Panel Dash")
+    print("Configuracion del Panel Dash (DEMO)")
     print("=" * 40)
     print(f"Modo: {status['modo']}")
     print(f"Tipo BD: {status['tipo_bd']}")
-    print(f"Descripción: {status['descripcion']}")
-    print(f"Módulo: {status['modulo']}")
+    print(f"Descripcion: {status['descripcion']}")
+    print(f"Modulo: {status['modulo']}")
     print()
     print(f"Empresa: {APP_CONFIG['empresa']}")
-    print(f"Título: {APP_CONFIG['title']}")
-    print()
-    print("💡 Para cambiar de modo:")
-    print("   - Modo REAL: set MODO_OPERACION=REAL")
-    print("   - Modo DEMO: set MODO_OPERACION=DEMO (o dejar vacío)")
+    print(f"Titulo: {APP_CONFIG['title']}")
     print()
     print("[START] Para iniciar simulacion en modo DEMO:")
-    print("   python demo_simulation.py --mode continuous")
+    print("   set DEMO_SIMULACION=1 && python app_demo.py")

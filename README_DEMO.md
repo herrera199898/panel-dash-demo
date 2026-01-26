@@ -1,10 +1,9 @@
-# 🍎 Panel Dash - AgroIndustria XYZ S.A. (Demo)
+﻿# 🍎 Panel Dash - AgroIndustria XYZ S.A. (Demo)
 
 Versión de demostración del sistema de monitoreo de producción con **datos ficticios** para presentación a potenciales clientes.
 
 ## 🎯 ¿Qué es esto?
 
-Una versión modificada del dashboard de producción que utiliza **datos simulados** en lugar de una base de datos real de SQL Server. Perfecta para:
 
 - **Presentaciones comerciales** 📊
 - **Demos a clientes** 👥
@@ -67,7 +66,6 @@ python app_demo.py
 ├── app_demo.py              # Dashboard modificado para demo
 ├── demo_db_generator.py     # Generador de base de datos SQLite
 ├── demo_simulation.py       # Simulador de producción en tiempo real
-├── database_demo.py         # Conexión a SQLite (en lugar de SQL Server)
 ├── config_demo.py           # Configuración para alternar modos
 ├── run_demo.py              # Script de inicio simplificado
 ├── demo_database.db         # Base de datos SQLite (generada automáticamente)
@@ -80,7 +78,6 @@ python app_demo.py
 ```bash
 # Modo de operación
 set MODO_OPERACION=DEMO    # Datos ficticios (por defecto)
-set MODO_OPERACION=REAL    # SQL Server real
 ```
 
 ### Parámetros de Simulación
@@ -118,12 +115,6 @@ En `demo_simulation.py`, modifica:
 - Lógica de incremento de producción
 
 ## 🔄 Alternar entre Modos
-
-### Para usar datos REALES (SQL Server):
-```bash
-set MODO_OPERACION=REAL
-python app.py  # Tu aplicación original
-```
 
 ### Para usar datos DEMO (SQLite):
 ```bash
@@ -173,7 +164,6 @@ tail -f logs/app.log
 
 - Los datos son **completamente ficticios**
 - La simulación es **determinística pero realista**
-- No requiere **SQL Server** ni conexión a red
 - **Portable:** Todo funciona en un solo directorio
 
 ## 📞 Soporte

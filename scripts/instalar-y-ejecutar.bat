@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 REM ===================================================================
 REM Script de instalación y ejecución automática - Panel Dash Frutísima
 REM Este script instala Python (si es necesario) y todas las dependencias
@@ -148,17 +148,12 @@ echo [OK] Todas las dependencias se instalaron correctamente.
 echo.
 
 :: ===================================================================
-:: PASO 5: Verificar ODBC Driver para SQL Server
 :: ===================================================================
-echo [5/5] Verificando ODBC Driver 18 for SQL Server...
 
-reg query "HKLM\SOFTWARE\ODBC\ODBCINST.INI\ODBC Driver 18 for SQL Server" >nul 2>&1
 if not errorlevel 1 goto :odbc_ok
 
 echo.
-echo [!] ADVERTENCIA: ODBC Driver 18 for SQL Server no parece estar instalado.
 echo.
-echo Intentando instalar ODBC Driver 18 automaticamente usando winget...
 echo.
 
 where winget >nul 2>&1
@@ -167,7 +162,6 @@ if errorlevel 1 goto :odbc_manual
 winget install Microsoft.ODBCDriver.18 --silent --accept-package-agreements --accept-source-agreements
 if errorlevel 1 goto :odbc_manual
 
-echo [OK] ODBC Driver 18 instalado correctamente.
 goto :odbc_ok
 
 :odbc_manual
@@ -186,7 +180,6 @@ echo Presione cualquier tecla para continuar de todos modos...
 pause >nul
 
 :odbc_ok
-echo [OK] ODBC Driver 18 for SQL Server verificado (instalado o se omite).
 echo.
 
 :: ===================================================================
@@ -242,5 +235,4 @@ set "APP_EXIT=%errorlevel%"
 echo.
 echo La aplicacion se ha cerrado. (ExitCode=%APP_EXIT%)
 pause
-
 

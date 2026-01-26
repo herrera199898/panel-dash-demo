@@ -1,4 +1,4 @@
-"""
+﻿"""
 Generador de Base de Datos Demo para Panel Dash
 Crea una base de datos SQLite con datos ficticios para simular producción
 """
@@ -7,6 +7,11 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import random
+
+DEMO_FIXED_CAJAS_TOTALES = 200
+DEMO_FIXED_CAJAS_VACIADAS = 100
+DEMO_FIXED_KG_TOTALES = 4000
+DEMO_FIXED_KG_POR_HORA = 6000
 
 class DemoDatabaseGenerator:
     def __init__(self, db_path="demo_database.db"):
@@ -313,10 +318,10 @@ class DemoDatabaseGenerator:
                     "codigo_proveedor": "CSG001",
                     "codigo_proceso": "CAL001",
                     "codigo_lote": "0001",
-                    "unidades_planificadas": 100,  # Reducido de 1000 a 100
-                    "unidades_vaciadas": 45,  # Reducido de 450 a 45
+                    "unidades_planificadas": DEMO_FIXED_CAJAS_TOTALES,
+                    "unidades_vaciadas": DEMO_FIXED_CAJAS_VACIADAS,
                     "variedad": "Gala Roja",
-                    "peso_netto": 45 * 1.2 * 1000,  # 1.2 kg promedio por caja
+                    "peso_netto": DEMO_FIXED_KG_TOTALES * 1000,
                     "proveedor_nombre": "Campo Verde Ltda."
                 }
 
@@ -547,6 +552,5 @@ if __name__ == "__main__":
     generator.close_connection()
 
     print("\n[INFO] Para usar la base de datos demo:")
-    print("   1. Modifica database.py para usar SQLite en lugar de SQL Server")
     print("   2. Actualiza las consultas SQL si es necesario")
     print("   3. Ejecuta el dashboard con los datos ficticios")

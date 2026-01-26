@@ -1,4 +1,4 @@
-"""
+﻿"""
 Módulo de configuración de conexiones a la base de datos - VERSIÓN DEMO
 Conexión a SQLite para datos ficticios
 """

@@ -80,6 +80,7 @@ DEMO_CAJAS_POR_HORA = 0
 DEMO_KG_POR_HORA = 0
 DEMO_CAJAS_STEP = 1
 DEMO_REFRESH_S = 5
+DEMO_KG_POR_HORA_TARGET = 4800
 DEMO_LOTE_PREFIX = "D"
 DEMO_PRODUCTORES = ["Campo Verde Ltda.", "Hacienda del Valle", "Agricola Los Andes", "Fruticola Patagonia", "Campo Norte S.A."]
 DEMO_VARIEDADES = ["Gala Roja", "Gala Verde", "Gala Premium", "Williams", "Packham", "Tardia", "Bing", "Rainier", "Sweetheart", "Thompson", "Red Globe", "Flame"]
@@ -146,7 +147,7 @@ def update_demo_progress():
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT ProcessoCodice, LottoCodice, UnitaPianificate, UnitaSvuotate
+            SELECT ProcessoCodice, LottoCodice, UnitaPianificate, UnitaSvuotate, DataAcquisizione
             FROM VW_MON_Partita_Corrente
             ORDER BY DataAcquisizione DESC
             LIMIT 1
@@ -162,10 +163,28 @@ def update_demo_progress():
         unita_pianificate = int(row[2] or 0)
         unita_svuotate = int(row[3] or 0)
 
-        # Velocidades derivadas del paso por refresh
-        cajas_por_hora = int(round((DEMO_CAJAS_STEP / max(1, DEMO_REFRESH_S)) * 3600))
+                # Velocidades objetivo (kg/h) y gating por tiempo
         kg_por_caja = DEMO_TOTAL_KG / max(1, DEMO_TOTAL_CAJAS)
+        cajas_por_hora = max(1, int(round(DEMO_KG_POR_HORA_TARGET / max(1, kg_por_caja))))
         kg_por_hora = int(round(cajas_por_hora * kg_por_caja))
+
+        # Respetar intervalo m?nimo para avanzar (segundos por caja)
+        last_ts = row[4]
+        try:
+            if isinstance(last_ts, str):
+                last_dt = datetime.datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
+            elif hasattr(last_ts, 'to_pydatetime'):
+                last_dt = last_ts.to_pydatetime()
+            else:
+                last_dt = last_ts
+        except Exception:
+            last_dt = None
+        if last_dt:
+            elapsed = (datetime.datetime.now() - last_dt).total_seconds()
+            sec_por_caja = 3600 / max(1, cajas_por_hora)
+            if elapsed < sec_por_caja:
+                conn.close()
+                return
 
         if unita_svuotate >= unita_pianificate:
             # Cambiar a un nuevo lote demo con datos distintos
@@ -837,7 +856,8 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
 
         # Calcular ETA (tiempo estimado de fin de lote) basado en datos ficticios actuales
         cajas_restantes_eta = max(0, int(cajas_restantes or 0))
-        cajas_por_hora = max(1, int(round((DEMO_CAJAS_STEP / max(1, DEMO_REFRESH_S)) * 3600)))
+        kg_por_caja = DEMO_TOTAL_KG / max(1, DEMO_TOTAL_CAJAS)
+        cajas_por_hora = max(1, int(round(DEMO_KG_POR_HORA_TARGET / max(1, kg_por_caja))))
         if cajas_restantes_eta == 0:
             eta_store = {
                 "lote": str(lote_actual) if lote_actual else None,

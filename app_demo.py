@@ -984,7 +984,8 @@ def update_eta(n, eta_data):
                 seconds = int(remaining % 60)
 
             result = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            return result
+            fecha_actual = datetime.datetime.now().strftime("%d/%m/%Y")
+            return f"{fecha_actual} {result}"
         return "--:--:--"
     except Exception:
         return "--:--:--"

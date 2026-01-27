@@ -756,9 +756,9 @@ app.clientside_callback(
         }
         const elapsed = (Date.now() - eta.generated_ms) / 1000.0;
         const remaining = eta.remaining_s - elapsed;
-        const end = (eta.end_iso) ? new Date(eta.end_iso) : new Date(Date.now() + (remaining * 1000.0));
-        // Mismo "lineamiento" de formato: fecha + tiempo, pero manteniendo el temporizador.
-        return fmtDMY(end) + " " + fmtHMS(remaining);
+        const now = new Date();
+        // Mismo "lineamiento" de formato: fecha actual + temporizador.
+        return fmtDMY(now) + " " + fmtHMS(remaining);
     }
     """,
     Output("eta-lote", "children"),

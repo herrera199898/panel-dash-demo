@@ -313,7 +313,7 @@ def get_current_record():
         query = """
         SELECT TOP 1 *
         FROM VW_MON_Partita_Corrente 
-        ORDER BY 1 DESC
+        ORDER BY DataAcquisizione DESC
         """
         df = read_sql_adapted(query, conn)
         conn.close()
@@ -411,7 +411,7 @@ def get_kg_por_turno():
         SELECT TOP 1 
             PesoSvuotato
         FROM VW_MON_Produttivita_Turno_Corrente
-        ORDER BY 1 DESC
+        ORDER BY DataAcquisizione DESC
         """
         df = read_sql_adapted(query, conn)
         conn.close()
@@ -500,7 +500,7 @@ def get_cajas_por_turno():
         SELECT TOP 1
             UnitaSvuotate
         FROM VW_MON_Produttivita_Turno_Corrente
-        ORDER BY 1 DESC
+        ORDER BY DataAcquisizione DESC
         """
         df = read_sql_adapted(query, conn)
         conn.close()
@@ -519,7 +519,7 @@ def get_cajas_por_hora_turno():
         SELECT TOP 1
             UnitaSvuotateOra
         FROM VW_MON_Produttivita_Turno_Corrente
-        ORDER BY 1 DESC
+        ORDER BY DataAcquisizione DESC
         """
         df = read_sql_adapted(query, conn)
         conn.close()
@@ -598,20 +598,20 @@ def get_lotti_inizio_fine_map(max_rows: int = 800):
 
 
 def get_kg_por_hora_turno():
-    """Obtiene los kg por hora del turno desde VW_MON_Produttivita_Turno_Corrente (convierte de gramos a kg)."""
+    """Obtiene los kg por hora del turno desde VW_MON_Produttivita_Turno_Corrente."""
     try:
         conn = get_connection()
         query = """
         SELECT TOP 1
             PesoSvuotatoOra
         FROM VW_MON_Produttivita_Turno_Corrente
-        ORDER BY 1 DESC
+        ORDER BY DataAcquisizione DESC
         """
         df = read_sql_adapted(query, conn)
         conn.close()
         if not df.empty:
             gramos = float(df.iloc[0]["PesoSvuotatoOra"]) if pd.notna(df.iloc[0]["PesoSvuotatoOra"]) else 0
-            return gramos / 1000
+            return gramos
         return 0
     except Exception:
         return 0

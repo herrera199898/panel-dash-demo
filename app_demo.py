@@ -74,6 +74,18 @@ from icons import (
 
 TURN_TIME_ICON_SVG = """<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="#ffffff"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path> <path d="M12 6V12" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path> <path d="M16.24 16.24L12 12" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path> </g></svg>"""
 
+DEMO_TOTAL_CAJAS = 200
+DEMO_TOTAL_KG = 4000
+DEMO_CAJAS_POR_HORA = 0
+DEMO_KG_POR_HORA = 0
+DEMO_CAJAS_STEP = 1
+DEMO_REFRESH_S = 5
+DEMO_LOTE_PREFIX = "D"
+DEMO_PRODUCTORES = ["Campo Verde Ltda.", "Hacienda del Valle", "Agricola Los Andes", "Fruticola Patagonia", "Campo Norte S.A."]
+DEMO_VARIEDADES = ["Gala Roja", "Gala Verde", "Gala Premium", "Williams", "Packham", "Tardia", "Bing", "Rainier", "Sweetheart", "Thompson", "Red Globe", "Flame"]
+DEMO_PROCESOS = ["CAL001", "CAL002", "CAL003", "EMP001", "EMP002"]
+DEMO_EXPORTADORES = ["Exportadora Global S.A.", "Frutas del Mundo Ltda.", "AgroExport Premium", "International Fruits Corp.", "Premium Produce Export"]
+
 app = dash.Dash(__name__, title=APP_CONFIG['title'])
 server = app.server
 
@@ -126,6 +138,146 @@ def construir_metric_card(label, value, subtext="", accent="#2563eb", icon_svg=N
 def truncar_texto(valor, max_len=30):
     texto = str(valor) if valor is not None else "N/A"
     return texto[: max_len - 3] + "..." if len(texto) > max_len else texto
+
+def update_demo_progress():
+    """Avanza el demo en cada refresh (sin cambios aleatorios)."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT ProcessoCodice, LottoCodice, UnitaPianificate, UnitaSvuotate
+            FROM VW_MON_Partita_Corrente
+            ORDER BY DataAcquisizione DESC
+            LIMIT 1
+            """
+        )
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return
+
+        processo_codice = row[0]
+        lotto_codice = row[1]
+        unita_pianificate = int(row[2] or 0)
+        unita_svuotate = int(row[3] or 0)
+
+        # Velocidades derivadas del paso por refresh
+        cajas_por_hora = int(round((DEMO_CAJAS_STEP / max(1, DEMO_REFRESH_S)) * 3600))
+        kg_por_caja = DEMO_TOTAL_KG / max(1, DEMO_TOTAL_CAJAS)
+        kg_por_hora = int(round(cajas_por_hora * kg_por_caja))
+
+        if unita_svuotate >= unita_pianificate:
+            # Cambiar a un nuevo lote demo con datos distintos
+            nuevo_lote = f"{DEMO_LOTE_PREFIX}{datetime.datetime.now().strftime('%H%M%S')}"
+            nuevo_proceso = random.choice(DEMO_PROCESOS)
+            nuevo_productor = random.choice(DEMO_PRODUCTORES)
+            nueva_variedad = random.choice(DEMO_VARIEDADES)
+            nuevo_exportador = random.choice(DEMO_EXPORTADORES)
+
+            cur.execute(
+                """
+                INSERT INTO VW_LottiIngresso
+                (CodiceProduttore, CodiceProcesso, CodiceLotto, UnitaPianificate,
+                 UnitaIn, UnitaRestanti, Varieta, PesoNetto, DataLettura, ProductorNombre, EsportatoreDescrizione)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "CSG001",
+                    nuevo_proceso,
+                    nuevo_lote,
+                    DEMO_TOTAL_CAJAS,
+                    0,
+                    DEMO_TOTAL_CAJAS,
+                    nueva_variedad,
+                    DEMO_TOTAL_KG * 1000,
+                    datetime.datetime.now(),
+                    nuevo_productor,
+                    nuevo_exportador,
+                ),
+            )
+
+            cur.execute(
+                """
+                UPDATE VW_MON_Partita_Corrente
+                SET ProcessoCodice = ?, LottoCodice = ?, UnitaPianificate = ?, UnitaSvuotate = ?,
+                    PesoNetto = ?, DataAcquisizione = ?, ProduttoreDescrizione = ?, VarietaDescrizione = ?, EsportatoreDescrizione = ?
+                WHERE LottoCodice = ?
+                """,
+                (
+                    nuevo_proceso,
+                    nuevo_lote,
+                    DEMO_TOTAL_CAJAS,
+                    0,
+                    0,
+                    datetime.datetime.now(),
+                    nuevo_productor,
+                    nueva_variedad,
+                    nuevo_exportador,
+                    lotto_codice,
+                ),
+            )
+
+            cur.execute(
+                """
+                UPDATE VW_MON_Produttivita_Turno_Corrente
+                SET UnitaSvuotate = 0, UnitaSvuotateOra = ?, PesoSvuotato = 0,
+                    PesoSvuotatoOra = ?, FermoMacchinaMinuti = 0, DataAcquisizione = ?
+                """,
+                (cajas_por_hora, kg_por_hora, datetime.datetime.now()),
+            )
+
+            conn.commit()
+            conn.close()
+            return
+
+        nuevas_unidades = min(unita_svuotate + DEMO_CAJAS_STEP, unita_pianificate)
+        peso_actual = nuevas_unidades * kg_por_caja * 1000  # gramos
+
+        cur.execute(
+            """
+            UPDATE VW_MON_Partita_Corrente
+            SET UnitaSvuotate = ?, PesoNetto = ?, DataAcquisizione = ?
+            WHERE LottoCodice = ?
+            """,
+            (nuevas_unidades, peso_actual, datetime.datetime.now(), lotto_codice),
+        )
+
+        cur.execute(
+            """
+            UPDATE VW_LottiIngresso
+            SET UnitaIn = ?, UnitaRestanti = ?, PesoNetto = ?, DataLettura = ?
+            WHERE CodiceLotto = ? AND CodiceProcesso = ?
+            """,
+            (
+                nuevas_unidades,
+                max(0, unita_pianificate - nuevas_unidades),
+                DEMO_TOTAL_KG * 1000,
+                datetime.datetime.now(),
+                lotto_codice,
+                processo_codice,
+            ),
+        )
+
+        cur.execute(
+            """
+            UPDATE VW_MON_Produttivita_Turno_Corrente
+            SET UnitaSvuotate = ?, UnitaSvuotateOra = ?, PesoSvuotato = ?,
+                PesoSvuotatoOra = ?, FermoMacchinaMinuti = 0, DataAcquisizione = ?
+            """,
+            (
+                nuevas_unidades,
+                cajas_por_hora,
+                peso_actual,
+                kg_por_hora,
+                datetime.datetime.now(),
+            ),
+        )
+
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 # Layout principal del dashboard (igual que el original app.py)
 app.layout = html.Div([
@@ -320,30 +472,21 @@ print("[DEBUG] Registering actualizar_panel callback...")
     [Input("interval-act", "n_intervals")],
     [State("panel-snapshot", "data"),
      State("fermo-baseline-store", "data"),
-     State("lote-finish-store", "data")],
+     State("lote-finish-store", "data"),
+     State("eta-store", "data")],
 )
-def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
+def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, eta_prev):
     print(f"[DEBUG] actualizar_panel FUNCTION CALLED: n_intervals={_}")
-    # #region agent log
-    import json
-    log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\debug.log"
-    try:
-        print(f"[DEBUG] actualizar_panel called: n_intervals={_}")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"app_demo.py:actualizar_panel:entry","message":"Callback actualizar_panel called","data":{"n_intervals":_ if _ else None,"prev_snapshot":prev_snapshot is not None},"timestamp":int(time.time()*1000)}) + "\n")
-            f.flush()  # Forzar escritura inmediata
-    except Exception as e:
-        print(f"[DEBUG] Error writing log: {e}")
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"app_demo.py:actualizar_panel:entry_error","message":"Error in entry log","data":{"error":str(e)},"timestamp":int(time.time()*1000)}) + "\n")
-                f.flush()
-        except: pass
-    # #endregion
     try:
         now = datetime.datetime.now()
-        cajas_por_hora_turno = 0
-        kg_por_hora_turno = 0
+        update_demo_progress()
+        try:
+            cajas_por_hora_turno = get_cajas_por_hora_turno() or 0
+            kg_por_hora_turno = get_kg_por_hora_turno() or 0
+        except Exception:
+            cajas_por_hora_turno = 0
+            kg_por_hora_turno = 0
+
 
         hora = now.strftime("%d/%m/%Y %H:%M:%S")
 
@@ -359,6 +502,16 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
             productor = current_record["Productor"] if current_record else "N/A"
 
         lote_actual = datos_lote["Lote"] if datos_lote and datos_lote.get("Lote") else None
+        
+        # #region agent log
+        import json
+        log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\debug.log"
+        try:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"app_demo.py:actualizar_panel:data_read","message":"Data read from DB","data":{"lote_actual":str(lote_actual) if lote_actual else None,"cajas_planificadas":datos_lote.get("Cajas Planificadas") if datos_lote else None,"cajas_vaciadas":datos_lote.get("Cajas Vaciadas") if datos_lote else None,"kg_totales":datos_lote.get("PesoNetto") if datos_lote else None},"timestamp":int(time.time()*1000)}) + "\n")
+                f.flush()
+        except: pass
+        # #endregion
 
         # Obtener exportador
         exportador = None
@@ -431,12 +584,6 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
         # Calcular tiempo de turno y detención desde datos ficticios actuales
         turno_s = 0
         fermo_min = 0
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"app_demo.py:actualizar_panel:turno_start","message":"Starting turno calculation","data":{},"timestamp":int(time.time()*1000)}) + "\n")
-        except: pass
-        # #endregion
         try:
             # Obtener datos del turno desde VW_MON_Produttivita_Turno_Corrente
             conn = get_connection()
@@ -449,22 +596,10 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
             df_turno_completo = read_sql_adapted(query_turno_completo, conn)
             conn.close()
             
-            # #region agent log
-            try:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"app_demo.py:actualizar_panel:turno_query","message":"Turno query result","data":{"found":not df_turno_completo.empty,"rows":len(df_turno_completo) if not df_turno_completo.empty else 0},"timestamp":int(time.time()*1000)}) + "\n")
-            except: pass
-            # #endregion
             
             if not df_turno_completo.empty:
                 # Obtener tiempo de inicio del turno
                 turno_inicio = df_turno_completo.iloc[0].get("TurnoInizio")
-                # #region agent log
-                try:
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"app_demo.py:actualizar_panel:turno_inicio","message":"Turno inicio extracted","data":{"turno_inicio":str(turno_inicio) if turno_inicio else None,"type":type(turno_inicio).__name__},"timestamp":int(time.time()*1000)}) + "\n")
-                except: pass
-                # #endregion
                 if turno_inicio:
                     try:
                         # Convertir a datetime
@@ -479,38 +614,14 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
                         if isinstance(turno_inicio_dt, datetime.datetime):
                             turno_s = int((datetime.datetime.now() - turno_inicio_dt).total_seconds())
                             turno_s = max(0, turno_s)  # Asegurar que no sea negativo
-                            # #region agent log
-                            try:
-                                with open(log_path, "a", encoding="utf-8") as f:
-                                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"app_demo.py:actualizar_panel:turno_calculated","message":"Turno time calculated","data":{"turno_s":turno_s,"turno_inicio_dt":turno_inicio_dt.isoformat()},"timestamp":int(time.time()*1000)}) + "\n")
-                            except: pass
-                            # #endregion
                     except Exception as e:
-                        # #region agent log
-                        try:
-                            with open(log_path, "a", encoding="utf-8") as f:
-                                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"app_demo.py:actualizar_panel:turno_error","message":"Error calculating turno","data":{"error":str(e)},"timestamp":int(time.time()*1000)}) + "\n")
-                        except: pass
-                        # #endregion
                         turno_s = 0
                 
                 # Obtener tiempo de detención desde los datos del turno
                 fermo_min = float(df_turno_completo.iloc[0].get("FermoMacchinaMinuti", 0) or 0)
                 if pd.isna(fermo_min):
                     fermo_min = 0
-                # #region agent log
-                try:
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"app_demo.py:actualizar_panel:fermo","message":"Fermo extracted","data":{"fermo_min":fermo_min},"timestamp":int(time.time()*1000)}) + "\n")
-                except: pass
-                # #endregion
         except Exception as e:
-            # #region agent log
-            try:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"app_demo.py:actualizar_panel:turno_exception","message":"Exception in turno calculation","data":{"error":str(e)},"timestamp":int(time.time()*1000)}) + "\n")
-            except: pass
-            # #endregion
             turno_s = 0
             fermo_min = 0
         
@@ -725,98 +836,25 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
             data, columns, style_conditional = [], [], []
 
         # Calcular ETA (tiempo estimado de fin de lote) basado en datos ficticios actuales
-        eta_store = None
         cajas_restantes_eta = max(0, int(cajas_restantes or 0))
-        kg_restantes_eta = max(0, float(kg_restantes or 0))
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"app_demo.py:actualizar_panel:eta_start","message":"Starting ETA calculation","data":{"datos_lote":datos_lote is not None,"lote_actual":str(lote_actual) if lote_actual else None,"cajas_restantes_eta":cajas_restantes_eta,"kg_restantes_eta":kg_restantes_eta},"timestamp":int(time.time()*1000)}) + "\n")
-        except: pass
-        # #endregion
-        # Si no hay cajas o kg restantes, el lote está terminado
-        if cajas_restantes_eta == 0 or kg_restantes_eta == 0:
+        cajas_por_hora = max(1, int(round((DEMO_CAJAS_STEP / max(1, DEMO_REFRESH_S)) * 3600)))
+        if cajas_restantes_eta == 0:
             eta_store = {
                 "lote": str(lote_actual) if lote_actual else None,
                 "remaining_s": 0,
                 "generated_ms": int(time.time() * 1000.0),
                 "end_iso": datetime.datetime.now().isoformat(),
             }
-        elif datos_lote and lote_actual and cajas_restantes_eta > 0:
-            # Obtener datos reales del turno desde VW_MON_Produttivita_Turno_Corrente
-            try:
-                conn = get_connection()
-                query_turno = """
-                SELECT UnitaSvuotate, UnitaSvuotateOra, TurnoInizio
-                FROM VW_MON_Produttivita_Turno_Corrente
-                ORDER BY DataAcquisizione DESC
-                LIMIT 1
-                """
-                df_turno = read_sql_adapted(query_turno, conn)
-                conn.close()
-                
-                if not df_turno.empty:
-                    # Obtener cajas vaciadas del turno y velocidad por hora
-                    cajas_turno = int(df_turno.iloc[0].get("UnitaSvuotate", 0) or 0)
-                    cajas_por_hora_turno = int(df_turno.iloc[0].get("UnitaSvuotateOra", 0) or 0)
-                    turno_inicio = df_turno.iloc[0].get("TurnoInizio")
-                    
-                    # Calcular horas transcurridas del turno
-                    horas_turno = 0.5  # Default mínimo
-                    if turno_inicio:
-                        try:
-                            if isinstance(turno_inicio, str):
-                                turno_inicio_dt = datetime.datetime.fromisoformat(turno_inicio.replace('Z', '+00:00'))
-                            elif hasattr(turno_inicio, "to_pydatetime"):
-                                turno_inicio_dt = turno_inicio.to_pydatetime()
-                            else:
-                                turno_inicio_dt = turno_inicio
-                            
-                            horas_turno = max(0.5, (datetime.datetime.now() - turno_inicio_dt).total_seconds() / 3600)
-                        except Exception:
-                            pass
-                    
-                    # Usar velocidad del turno si está disponible, sino calcular desde cajas vaciadas
-                    if cajas_por_hora_turno > 0:
-                        cajas_por_hora = cajas_por_hora_turno
-                    elif horas_turno > 0 and cajas_turno > 0:
-                        # Calcular desde las cajas vaciadas del turno y horas transcurridas
-                        cajas_por_hora = max(20, int(cajas_turno / horas_turno))
-                    else:
-                        # Fallback: usar velocidad promedio ficticia
-                        cajas_por_hora = random.randint(50, 120)
-                else:
-                    # Fallback: usar velocidad promedio ficticia
-                    cajas_por_hora = random.randint(50, 120)
-            except Exception as e:
-                # Fallback: usar velocidad promedio ficticia
-                cajas_por_hora = random.randint(50, 120)
-            
-            # Calcular ETA basado en cajas restantes y velocidad real
-            # Asegurar que la velocidad sea razonable (mínimo 1 caja/hora para evitar división por cero)
-            cajas_por_hora = max(1, cajas_por_hora)
-            if cajas_por_hora > 0:
-                # Calcular tiempo en segundos necesario para vaciar las cajas restantes
-                eta_s = int(round((cajas_restantes_eta / cajas_por_hora) * 3600))
-                # Asegurar que el tiempo sea positivo
-                eta_s = max(0, eta_s)
-                fin_estimado = datetime.datetime.now() + datetime.timedelta(seconds=eta_s)
-                eta_store = {
-                    "lote": str(lote_actual),
-                    "remaining_s": eta_s,
-                    "generated_ms": int(time.time() * 1000.0),
-                    "end_iso": fin_estimado.isoformat(),
-                }
-                # #region agent log
-                try:
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"app_demo.py:actualizar_panel:eta_calculated","message":"ETA calculated","data":{"eta_s":eta_s,"cajas_por_hora":cajas_por_hora,"cajas_restantes":cajas_restantes_eta,"fin_estimado":fin_estimado.isoformat()},"timestamp":int(time.time()*1000)}) + "\n")
-                except Exception as e: 
-                    try:
-                        with open(log_path, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"app_demo.py:actualizar_panel:eta_log_error","message":"Error writing eta log","data":{"error":str(e)},"timestamp":int(time.time()*1000)}) + "\n")
-                    except: pass
-                # #endregion
+        else:
+            eta_s = int(round((cajas_restantes_eta / cajas_por_hora) * 3600))
+            eta_s = max(0, eta_s)
+            fin_estimado = datetime.datetime.now() + datetime.timedelta(seconds=eta_s)
+            eta_store = {
+                "lote": str(lote_actual),
+                "remaining_s": eta_s,
+                "generated_ms": int(time.time() * 1000.0),
+                "end_iso": fin_estimado.isoformat(),
+            }
 
         # Snapshot para optimización
         next_snapshot = {
@@ -829,13 +867,6 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
             "filtros": filtros,
         }
 
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"app_demo.py:actualizar_panel:return","message":"Returning eta_store","data":{"eta_store":eta_store is not None,"eta_store_content":str(eta_store) if eta_store else None,"lote_actual":str(lote_actual) if lote_actual else None,"cajas_restantes":cajas_restantes_eta},"timestamp":int(time.time()*1000)}) + "\n")
-                f.flush()
-        except: pass
-        # #endregion
 
         return (
             metricas,
@@ -853,12 +884,6 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
         )
 
     except Exception as e:
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"app_demo.py:actualizar_panel:exception","message":"Exception in actualizar_panel","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(time.time()*1000)}) + "\n")
-        except: pass
-        # #endregion
         # En caso de error, devolver valores por defecto
         error_msg = f"Error: {str(e)}"
         return (
@@ -876,7 +901,7 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
             None,  # eta-store
         )
 
-# Callbacks para actualizar la hora y el indicador de refresh
+    # Callbacks para actualizar la hora y el indicador de refresh
 @app.callback(
     Output("hora-actual", "children"),
     Output("refresh-indicator", "children"),
@@ -899,24 +924,7 @@ def update_time_and_refresh(n):
     State("eta-store", "data"),
 )
 def update_eta(n, eta_data):
-    # #region agent log
-    import json
-    log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\debug.log"
-    try:
-        print(f"[DEBUG] update_eta called: n={n}, eta_data={eta_data is not None}")
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"app_demo.py:update_eta:entry","message":"update_eta called","data":{"eta_data":eta_data is not None,"eta_data_content":str(eta_data) if eta_data else None},"timestamp":int(time.time()*1000)}) + "\n")
-            f.flush()
-    except: pass
-    # #endregion
-    
     if not eta_data:
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"app_demo.py:update_eta:no_data","message":"No eta_data provided","data":{},"timestamp":int(time.time()*1000)}) + "\n")
-        except: pass
-        # #endregion
         return "--:--:--"
 
     try:
@@ -924,35 +932,21 @@ def update_eta(n, eta_data):
         generated_ms = eta_data.get("generated_ms", 0)
         end_iso = eta_data.get("end_iso")
 
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"app_demo.py:update_eta:values","message":"ETA values extracted","data":{"remaining_s":remaining_s,"generated_ms":generated_ms,"end_iso":end_iso},"timestamp":int(time.time()*1000)}) + "\n")
-        except: pass
-        # #endregion
-
         if end_iso:
-            # Calcular tiempo restante desde la fecha/hora estimada de fin
             try:
-                # Parsear la fecha/hora estimada de fin
                 if isinstance(end_iso, str):
-                    # Remover 'Z' o timezone info si existe
                     end_iso_clean = end_iso.replace('Z', '').split('+')[0].split('.')[0]
-                    # Intentar parsear con diferentes formatos
                     try:
                         end_dt = datetime.datetime.fromisoformat(end_iso_clean)
-                    except:
-                        # Si falla, intentar formato alternativo
+                    except Exception:
                         end_dt = datetime.datetime.strptime(end_iso_clean, "%Y-%m-%dT%H:%M:%S")
                 else:
                     end_dt = end_iso
-                
-                # Calcular tiempo restante desde ahora hasta la fecha estimada
+
                 now = datetime.datetime.now()
                 remaining_delta = end_dt - now
                 remaining = max(0, remaining_delta.total_seconds())
-                
-                # Si el tiempo restante es muy pequeño (menos de 1 segundo), mostrar 0
+
                 if remaining < 1:
                     remaining = 0
                     hours = minutes = seconds = 0
@@ -960,40 +954,19 @@ def update_eta(n, eta_data):
                     hours = int(remaining // 3600)
                     minutes = int((remaining % 3600) // 60)
                     seconds = int(remaining % 60)
-            except Exception as e:
-                # Fallback: usar el método anterior si falla el parsing
+            except Exception:
                 elapsed = (datetime.datetime.now().timestamp() * 1000 - generated_ms) / 1000
                 remaining = max(0, remaining_s - elapsed)
 
-            # Si no se calcularon antes (fallback), calcularlos ahora
             if 'hours' not in locals():
                 hours = int(remaining // 3600)
                 minutes = int((remaining % 3600) // 60)
                 seconds = int(remaining % 60)
-            
+
             result = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            # #region agent log
-            try:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"app_demo.py:update_eta:result","message":"ETA result","data":{"result":result,"remaining":remaining},"timestamp":int(time.time()*1000)}) + "\n")
-            except: pass
-            # #endregion
             return result
-        else:
-            # #region agent log
-            try:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"app_demo.py:update_eta:no_end_iso","message":"No end_iso in eta_data","data":{},"timestamp":int(time.time()*1000)}) + "\n")
-            except: pass
-            # #endregion
-            return "--:--:--"
-    except Exception as e:
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"app_demo.py:update_eta:exception","message":"Exception in update_eta","data":{"error":str(e)},"timestamp":int(time.time()*1000)}) + "\n")
-        except: pass
-        # #endregion
+        return "--:--:--"
+    except Exception:
         return "--:--:--"
 
 # Callbacks para tabs (igual que el original)
@@ -1018,22 +991,22 @@ if __name__ == "__main__":
 
     if is_demo_mode():
         print("\n[INFO] Modo DEMO activado")
-        print("[INFO] Iniciando simulacion de datos en segundo plano...")
-        
-        # Iniciar simulación en un thread separado
-        def run_simulation():
-            try:
-                from demo_simulation import ProductionSimulator
-                simulator = ProductionSimulator(update_interval=30)
-                simulator.start_simulation()
-            except Exception as e:
-                print(f"[WARN] Error en simulacion: {e}")
-        
-        sim_thread = threading.Thread(target=run_simulation, daemon=True)
-        sim_thread.start()
-        print("[OK] Simulacion iniciada (actualizacion cada 30 segundos)")
-        print("\n Para cambiar a modo REAL:")
+        if is_demo_simulation_enabled():
+            print("[INFO] Iniciando simulacion de datos en segundo plano...")
 
-    # Obtener puerto desde variable de entorno (Render usa PORT)
+            def run_simulation():
+                try:
+                    from demo_simulation import ProductionSimulator
+                    simulator = ProductionSimulator(update_interval=30)
+                    simulator.start_simulation()
+                except Exception as e:
+                    print(f"[WARN] Error en simulacion: {e}")
+
+            sim_thread = threading.Thread(target=run_simulation, daemon=True)
+            sim_thread.start()
+            print("[OK] Simulacion iniciada (actualizacion cada 30 segundos)")
+        else:
+            print("[INFO] Simulacion demo desactivada (datos estaticos)")
+
     port = int(os.environ.get("PORT", 8050))
     app.run(debug=False, host="0.0.0.0", port=port)

@@ -671,58 +671,67 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
             kg_totales = kg_vaciados = kg_restantes = 0
             pct_cajas = 0
 
-        # Calcular tiempo de turno y detención desde datos ficticios actuales
+        # Calcular tiempo de turno (acumulado hasta el lote actual)
         turno_s = 0
         fermo_min = 0
         try:
-            # Obtener datos del turno desde VW_MON_Produttivita_Turno_Corrente
+            now_turno = datetime.datetime.now()
+            _, shift_start_dt, shift_end_dt, _ = _get_shift_window(now_turno)
+            now_clamped = min(now_turno, shift_end_dt)
+            turno_s = int((now_clamped - shift_start_dt).total_seconds())
+            turno_s = max(0, turno_s)
+
             conn = get_connection()
             query_turno_completo = """
-            SELECT TurnoInizio, FermoMacchinaMinuti
+            SELECT FermoMacchinaMinuti
             FROM VW_MON_Produttivita_Turno_Corrente
             ORDER BY DataAcquisizione DESC
             LIMIT 1
             """
             df_turno_completo = read_sql_adapted(query_turno_completo, conn)
             conn.close()
-            
-            
             if not df_turno_completo.empty:
-                # Obtener tiempo de inicio del turno
-                turno_inicio = df_turno_completo.iloc[0].get("TurnoInizio")
-                if turno_inicio:
-                    try:
-                        # Convertir a datetime
-                        if isinstance(turno_inicio, str):
-                            turno_inicio_dt = datetime.datetime.fromisoformat(turno_inicio.replace('Z', '+00:00'))
-                        elif hasattr(turno_inicio, "to_pydatetime"):
-                            turno_inicio_dt = turno_inicio.to_pydatetime()
-                        else:
-                            turno_inicio_dt = turno_inicio
-                        
-                        # Calcular tiempo transcurrido desde inicio del turno
-                        if isinstance(turno_inicio_dt, datetime.datetime):
-                            turno_s = int((datetime.datetime.now() - turno_inicio_dt).total_seconds())
-                            turno_s = max(0, turno_s)  # Asegurar que no sea negativo
-                    except Exception as e:
-                        turno_s = 0
-                
-                # Obtener tiempo de detención desde los datos del turno
                 fermo_min = float(df_turno_completo.iloc[0].get("FermoMacchinaMinuti", 0) or 0)
                 if pd.isna(fermo_min):
                     fermo_min = 0
-        except Exception as e:
+        except Exception:
             turno_s = 0
             fermo_min = 0
         
         # Formatear tiempo de detención
         det_hms = f"{int(fermo_min):02d}:{int((fermo_min % 1) * 60):02d}"
 
-        # Métricas (igual que el original)
+        # Acumulados por turno hasta el lote actual (sumando lotes anteriores + avance actual)
+        cajas_acum_turno = 0
+        kg_acum_turno = 0
+        try:
+            now_sum = datetime.datetime.now()
+            conn_sum = get_connection()
+            current_sum, next_dt_sum, _, schedule_sum = _get_current_lot_schedule(conn_sum, now_sum)
+            conn_sum.close()
+            if current_sum and schedule_sum:
+                lot_start_sum = current_sum["dt"]
+                lot_end_sum = max(lot_start_sum, next_dt_sum)
+                total_sec_sum = max(1.0, (lot_end_sum - lot_start_sum).total_seconds())
+                elapsed_sec_sum = max(0.0, (now_sum - lot_start_sum).total_seconds())
+                progress_ratio_sum = min(1.0, elapsed_sec_sum / total_sec_sum)
+
+                for item in schedule_sum:
+                    if item["dt"] < lot_start_sum:
+                        cajas_acum_turno += int(item.get("plan") or 0)
+                        kg_acum_turno += float(item.get("peso_total") or 0) / 1000.0
+                    elif item["dt"] == lot_start_sum:
+                        cajas_acum_turno += int(round((item.get("plan") or 0) * progress_ratio_sum))
+                        kg_acum_turno += (float(item.get("peso_total") or 0) / 1000.0) * progress_ratio_sum
+        except Exception:
+            cajas_acum_turno = 0
+            kg_acum_turno = 0
+
+        # Métricas
         metricas = [
             construir_metric_card(
-                "Cajas Turno",
-                f"{formatear_entero(cajas_vaciadas)}",
+                "Cajas Totales",
+                f"{formatear_entero(cajas_acum_turno)}",
                 "acumulado turno",
                 accent="#2563eb",
                 icon_svg=BOX_ICON_SVG,
@@ -737,8 +746,8 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
                 theme="purple",
             ),
             construir_metric_card(
-                "Kg por Proceso",
-                f"{round(kg_totales):,}".replace(",", ".") if kg_totales else "0",
+                "Kg Totales",
+                f"{round(kg_acum_turno):,}".replace(",", ".") if kg_acum_turno else "0",
                 "acumulado turno",
                 accent="#f97316",
                 icon_svg=PROCESS_ICON_SVG,

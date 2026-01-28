@@ -928,7 +928,7 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
                     t = now.time()
                     day_start = datetime.time(7, 0)
                     day_end = datetime.time(17, 0)
-                    night_start = datetime.time(17, 30)
+                    night_start = datetime.time(17, 0)
                     night_end = datetime.time(4, 0)
                     if t >= night_start or t < night_end:
                         # Turno noche: desde hoy 17:30 o desde ayer 17:30 si es madrugada
@@ -945,7 +945,9 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
                     mask_shift = (df_detalle_para_tabla["_fecha_dt"] >= start_dt) & (
                         df_detalle_para_tabla["_fecha_dt"] <= end_dt
                     )
-                    df_detalle_para_tabla = df_detalle_para_tabla.loc[mask_shift | mask_current]
+                    # Ocultar lotes futuros: solo mostrar procesados (fecha <= ahora) y lote actual
+                    mask_processed = df_detalle_para_tabla["_fecha_dt"] <= now
+                    df_detalle_para_tabla = df_detalle_para_tabla.loc[(mask_shift & mask_processed) | mask_current]
             except Exception:
                 pass
 

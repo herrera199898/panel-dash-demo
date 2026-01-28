@@ -388,6 +388,19 @@ def get_current_lote_from_detalle():
         # Convertir peso de gramos a kilogramos
         peso_netto_kg = float(df.iloc[0]['PesoNetto']) / 1000 if pd.notna(df.iloc[0]['PesoNetto']) else 0
         
+        fecha_lote = ""
+        try:
+            if pd.notna(df.iloc[0]["DataLettura"]):
+                fecha_lote = pd.to_datetime(df.iloc[0]["DataLettura"], errors="coerce")
+                if pd.notna(fecha_lote):
+                    fecha_lote = fecha_lote.strftime("%d/%m/%Y %H:%M:%S")
+                else:
+                    fecha_lote = ""
+            else:
+                fecha_lote = ""
+        except Exception:
+            fecha_lote = ""
+
         return {
             "CSG": str(df.iloc[0]['CodiceProduttore']) if pd.notna(df.iloc[0]['CodiceProduttore']) else "N/A",
             "Proceso": str(df.iloc[0]['CodiceProcesso']) if pd.notna(df.iloc[0]['CodiceProcesso']) else "N/A",
@@ -396,7 +409,8 @@ def get_current_lote_from_detalle():
             "UnitaPianificate": unita_pianificate,
             "UnitaSvuotate": unita_svuotate,
             "UnitaRestanti": unita_restanti,
-            "PesoNetto": peso_netto_kg
+            "PesoNetto": peso_netto_kg,
+            "Fecha y Hora": fecha_lote,
         }
         
     except Exception as e:

@@ -184,8 +184,9 @@ class DemoDatabaseGenerator:
 
         self.conn.commit()
 
+
     def generate_lot_data(self, num_lotes=50):
-        """Generar datos de lotes para simulacion (determinista, sin aleatoriedad)"""
+        """Generar datos de lotes para simulacion (determinista, sin aleatoriedad)."""
         cursor = self.conn.cursor()
 
         # Limpiar datos existentes
@@ -195,57 +196,109 @@ class DemoDatabaseGenerator:
         cursor.execute("DELETE FROM PROD_Lotto")
         cursor.execute("DELETE FROM PROD_Unita_OUT")
 
-        lotes_data = []
-        now = datetime.now()
-        step_hours = 6
-        base_time = now - timedelta(hours=step_hours * max(1, num_lotes - 1), minutes=10)
-
-        for i in range(num_lotes):
-            # Lote determinista (sin aleatoriedad)
-            lote_num = f"{1000 + i:04d}"
-            proveedor = self.proveedores[i % len(self.proveedores)]
-            producto = self.empresa_config["productos"][i % len(self.empresa_config["productos"])]
-            proceso = self.empresa_config["procesos"][i % len(self.empresa_config["procesos"])]
-            variedad = producto["variedades"][i % len(producto["variedades"])]
-
-            # Datos de produccion deterministas
-            unidades_planificadas = 50 + ((i * 13) % 151)  # 50-200
-            fecha_lectura = base_time + timedelta(hours=i * step_hours)
-
-            if i == num_lotes - 1:
-                # Lote activo (el mas reciente): parcial
-                unidades_vaciadas = int(unidades_planificadas * 0.5)
+        def _build_shift_records(count, start_dt, end_dt, start_index, partial_last):
+            records = []
+            if count <= 0:
+                return records
+            total_seconds = max(0, int((end_dt - start_dt).total_seconds()))
+            if partial_last and count > 1:
+                end_prev = end_dt - timedelta(minutes=45)
+                if end_prev < start_dt:
+                    end_prev = start_dt
+                prev_seconds = max(0, int((end_prev - start_dt).total_seconds()))
+                step = prev_seconds / float(count - 2) if count - 2 > 0 and prev_seconds > 0 else 0
+                times = [start_dt + timedelta(seconds=int(round(i * step))) for i in range(count - 1)]
+                last_time = end_dt - timedelta(minutes=30)
+                if last_time < start_dt:
+                    last_time = start_dt
+                times.append(last_time)
+            elif count == 1:
+                times = [end_dt]
             else:
-                # Lotes anteriores: completos
-                unidades_vaciadas = unidades_planificadas
+                step = total_seconds / float(count - 1) if total_seconds > 0 else 0
+                times = [start_dt + timedelta(seconds=int(round(i * step))) for i in range(count)]
+            for i, fecha_lectura in enumerate(times):
+                idx = start_index + i
+                lote_num = f"{1000 + idx:04d}"
+                proveedor = self.proveedores[idx % len(self.proveedores)]
+                producto = self.empresa_config["productos"][idx % len(self.empresa_config["productos"])]
+                proceso = self.empresa_config["procesos"][idx % len(self.empresa_config["procesos"])]
+                variedad = producto["variedades"][idx % len(producto["variedades"])]
 
-            unidades_restantes = unidades_planificadas - unidades_vaciadas
+                unidades_planificadas = 50 + ((idx * 13) % 151)  # 50-200
+                if partial_last and i == len(times) - 1:
+                    unidades_vaciadas = int(unidades_planificadas * 0.5)
+                    # Inicio teorico del lote actual (cercano al presente, sin actualizarse luego)
+                    fecha_lectura = times[-1]
+                else:
+                    unidades_vaciadas = unidades_planificadas
 
-            # Peso en gramos (convertir a kg despues)
-            peso_promedio_kg = 1.5  # fijo para consistencia
-            peso_netto = unidades_vaciadas * peso_promedio_kg * 1000  # en gramos
+                unidades_restantes = unidades_planificadas - unidades_vaciadas
 
-            lote_data = {
-                "codigo_proveedor": proveedor["codigo"],
-                "proveedor_nombre": proveedor["nombre"],
-                "codigo_proceso": proceso["codigo"],
-                "codigo_lote": lote_num,
-                "unidades_planificadas": unidades_planificadas,
-                "unidades_vaciadas": unidades_vaciadas,
-                "unidades_restantes": unidades_restantes,
-                "variedad": variedad,
-                "peso_netto": peso_netto,
-                "fecha_lectura": fecha_lectura,
-                "producto_codigo": producto["codigo"],
-            }
+                peso_promedio_kg = 1.5  # fijo para consistencia
+                peso_netto = unidades_vaciadas * peso_promedio_kg * 1000  # gramos
 
-            lotes_data.append(lote_data)
+                records.append({
+                    "codigo_proveedor": proveedor["codigo"],
+                    "proveedor_nombre": proveedor["nombre"],
+                    "codigo_proceso": proceso["codigo"],
+                    "codigo_lote": lote_num,
+                    "unidades_planificadas": unidades_planificadas,
+                    "unidades_vaciadas": unidades_vaciadas,
+                    "unidades_restantes": unidades_restantes,
+                    "variedad": variedad,
+                    "peso_netto": peso_netto,
+                    "fecha_lectura": fecha_lectura,
+                    "producto_codigo": producto["codigo"],
+                    "exportador_nombre": self.exportadores[idx % len(self.exportadores)]["nombre"],
+                })
+            return records
 
-            # Obtener exportador determinista para este lote
-            exportador = self.exportadores[i % len(self.exportadores)]
-            exportador_nombre = exportador["nombre"]
+        now = datetime.now()
+        day_start = datetime.combine(now.date(), datetime.strptime("07:00", "%H:%M").time())
+        day_end = datetime.combine(now.date(), datetime.strptime("17:00", "%H:%M").time())
+        night_start = datetime.combine(now.date(), datetime.strptime("17:30", "%H:%M").time())
+        night_end = datetime.combine(now.date(), datetime.strptime("04:00", "%H:%M").time())
 
-            # Insertar en VW_LottiIngresso
+        # Determinar turno actual
+        t = now.time()
+        is_night = t >= night_start.time() or t < night_end.time()
+
+        lotes_data = []
+        idx = 0
+
+        if is_night:
+            if t < night_end.time():
+                # Noche que comenzo ayer
+                cur_start = night_start - timedelta(days=1)
+                cur_end = now
+                # Dia previo completo
+                prev_day_start = day_start - timedelta(days=1)
+                prev_day_end = day_end - timedelta(days=1)
+                lotes_data += _build_shift_records(10, prev_day_start, prev_day_end, idx, partial_last=False)
+                idx += 10
+            else:
+                # Noche que comienza hoy
+                cur_start = night_start
+                cur_end = now
+                # Dia de hoy completo
+                lotes_data += _build_shift_records(10, day_start, day_end, idx, partial_last=False)
+                idx += 10
+            lotes_data += _build_shift_records(8, cur_start, cur_end, idx, partial_last=True)
+            idx += 8
+        else:
+            # Turno dia en curso
+            cur_start = day_start
+            cur_end = now
+            # Noche anterior completa
+            prev_night_start = night_start - timedelta(days=1)
+            prev_night_end = night_end
+            lotes_data += _build_shift_records(8, prev_night_start, prev_night_end, idx, partial_last=False)
+            idx += 8
+            lotes_data += _build_shift_records(10, cur_start, cur_end, idx, partial_last=True)
+            idx += 10
+
+        for lote_data in lotes_data:
             cursor.execute("""
                 INSERT INTO VW_LottiIngresso
                 (CodiceProduttore, CodiceProcesso, CodiceLotto, UnitaPianificate,
@@ -262,23 +315,20 @@ class DemoDatabaseGenerator:
                 lote_data["peso_netto"],
                 lote_data["fecha_lectura"],
                 lote_data["proveedor_nombre"],
-                exportador_nombre,
+                lote_data["exportador_nombre"],
             ))
 
-            # Insertar lote en PROD_Lotto para relaciones
             cursor.execute("""
                 INSERT INTO PROD_Lotto (LOT_Codice_Lotto, LOT_Data_Inizio)
                 VALUES (?, ?)
-            """, (lote_num, fecha_lectura))
+            """, (lote_data["codigo_lote"], lote_data["fecha_lectura"]))
 
             lote_id = cursor.lastrowid
-
-            # Vincular con exportador determinista
-            exportador = self.exportadores[i % len(self.exportadores)]
+            exportador = self.exportadores[(int(lote_data["codigo_lote"]) - 1000) % len(self.exportadores)]
             cursor.execute("""
                 INSERT INTO PROD_Unita_OUT (UOUT_Lotto_FK, UOUT_Esportatore_FK, UOUT_Data_Lettura)
                 VALUES (?, ?, ?)
-            """, (lote_id, exportador["id"], fecha_lectura))
+            """, (lote_id, exportador["id"], lote_data["fecha_lectura"]))
 
         self.conn.commit()
         return lotes_data
@@ -529,13 +579,12 @@ class DemoDatabaseGenerator:
                 peso_total_lote = unidades_planificadas * kg_por_caja * 1000  # en gramos
                 cursor.execute("""
                     UPDATE VW_LottiIngresso
-                    SET UnitaIn = ?, UnitaRestanti = ?, PesoNetto = ?, DataLettura = ?
+                    SET UnitaIn = ?, UnitaRestanti = ?, PesoNetto = ?
                     WHERE CodiceLotto = ? AND CodiceProcesso = ?
                 """, (
                     nuevas_unidades,
                     unidades_planificadas - nuevas_unidades,
                     peso_total_lote,
-                    datetime.now(),
                     row[3],
                     row[2]
                 ))

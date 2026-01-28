@@ -26,6 +26,29 @@ def get_connection():
     conn = sqlite3.connect(demo_db_path)
     # Configurar para que retorne filas como diccionarios
     conn.row_factory = sqlite3.Row
+    # Si la base esta vacia o incompleta, regenerar datos demo
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM VW_LottiIngresso")
+        count = cur.fetchone()[0]
+        if count < 18:
+            conn.close()
+            print("[DB] Datos demo incompletos. Regenerando...")
+            from demo_db_generator import DemoDatabaseGenerator
+            generator = DemoDatabaseGenerator(demo_db_path)
+            generator.create_database()
+            generator.close_connection()
+            conn = sqlite3.connect(demo_db_path)
+            conn.row_factory = sqlite3.Row
+    except Exception:
+        conn.close()
+        print("[DB] Error verificando datos demo. Regenerando...")
+        from demo_db_generator import DemoDatabaseGenerator
+        generator = DemoDatabaseGenerator(demo_db_path)
+        generator.create_database()
+        generator.close_connection()
+        conn = sqlite3.connect(demo_db_path)
+        conn.row_factory = sqlite3.Row
     return conn
 
 def get_connection_unitec():

@@ -2129,6 +2129,70 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
         except Exception:
             pass
 
+        # Mostrar solo registros del turno actual:
+        # - Turno dia: 07:00 a 17:00
+        # - Turno noche: 17:30 a 04:00 (cruza de dia)
+        # Mantener siempre el lote actual aunque quede fuera de rango.
+        try:
+            if "Fecha y Hora" in df_detalle.columns:
+                df_detalle["_fecha_dt"] = pd.to_datetime(
+                    df_detalle["Fecha y Hora"], format="%d/%m/%Y %H:%M:%S", errors="coerce"
+                )
+                if lote_actual is not None:
+                    if proceso_actual and "Proceso" in df_detalle.columns:
+                        mask_current = (df_detalle["Lote"].astype(str) == str(lote_actual)) & (
+                            df_detalle["Proceso"].astype(str) == str(proceso_actual)
+                        )
+                    else:
+                        mask_current = df_detalle["Lote"].astype(str) == str(lote_actual)
+                else:
+                    mask_current = pd.Series([False] * len(df_detalle), index=df_detalle.index)
+                now = datetime.datetime.now()
+                t = now.time()
+                day_start = datetime.time(7, 0)
+                day_end = datetime.time(17, 0)
+                night_start = datetime.time(17, 30)
+                night_end = datetime.time(4, 0)
+                if t >= night_start or t < night_end:
+                    # Turno noche: desde hoy 17:30 o desde ayer 17:30 si es madrugada
+                    if t < night_end:
+                        start_dt = datetime.datetime.combine(now.date() - datetime.timedelta(days=1), night_start)
+                        end_dt = datetime.datetime.combine(now.date(), night_end)
+                    else:
+                        start_dt = datetime.datetime.combine(now.date(), night_start)
+                        end_dt = datetime.datetime.combine(now.date() + datetime.timedelta(days=1), night_end)
+                else:
+                    # Turno dia (incluye 17:00-17:30 si cae en ese rango)
+                    start_dt = datetime.datetime.combine(now.date(), day_start)
+                    end_dt = datetime.datetime.combine(now.date(), day_end)
+                mask_shift = (df_detalle["_fecha_dt"] >= start_dt) & (df_detalle["_fecha_dt"] <= end_dt)
+                df_detalle = df_detalle.loc[mask_shift | mask_current]
+        except Exception:
+            pass
+
+        # Asegurar fecha/hora visible para el lote actual si viene vacia
+        try:
+            if "Fecha y Hora" in df_detalle.columns and lote_actual is not None:
+                if proceso_actual and "Proceso" in df_detalle.columns:
+                    mask_current = (df_detalle["Lote"].astype(str) == str(lote_actual)) & (
+                        df_detalle["Proceso"].astype(str) == str(proceso_actual)
+                    )
+                else:
+                    mask_current = df_detalle["Lote"].astype(str) == str(lote_actual)
+                empty_mask = df_detalle["Fecha y Hora"].isna() | (
+                    df_detalle["Fecha y Hora"].astype(str).str.strip().isin(["", "nan", "None", "NaT"])
+                )
+                if (mask_current & empty_mask).any():
+                    fecha_lote = None
+                    try:
+                        fecha_lote = datos_lote.get("Fecha y Hora") if isinstance(datos_lote, dict) else None
+                    except Exception:
+                        fecha_lote = None
+                    if fecha_lote:
+                        df_detalle.loc[mask_current & empty_mask, "Fecha y Hora"] = fecha_lote
+        except Exception:
+            pass
+
         # Dejar solo registros ya procesados + lote actual
         try:
             if "Cjs Vaciadas" in df_detalle.columns:

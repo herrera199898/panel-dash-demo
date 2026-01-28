@@ -2068,6 +2068,84 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
         except Exception:
             df_detalle["Tiempo Detenido"] = ""
 
+        # Ajustar "Cjs Vaciadas" / "Cjs Restantes" para lotes no actuales:
+        # - Lotes anteriores al actual: Vaciadas = Planificadas, Restantes = 0.
+        # - Lotes posteriores al actual: Vaciadas = 0, Restantes = Planificadas.
+        try:
+            if (
+                "Cjs Restantes" in df_detalle.columns
+                and "Cjs Planificadas" in df_detalle.columns
+                and "Cjs Vaciadas" in df_detalle.columns
+            ):
+                cjs_plan = pd.to_numeric(df_detalle["Cjs Planificadas"], errors="coerce").fillna(0)
+                # Usar Fecha y Hora para ordenar lotes y determinar cuáles vienen después
+                dt_col = "_orden_dt"
+                if "Fecha y Hora" in df_detalle.columns:
+                    df_detalle[dt_col] = pd.to_datetime(
+                        df_detalle["Fecha y Hora"], format="%d/%m/%Y %H:%M:%S", errors="coerce"
+                    )
+                else:
+                    df_detalle[dt_col] = pd.NaT
+                if lote_actual is not None:
+                    if proceso_actual and "Proceso" in df_detalle.columns:
+                        mask_current = (df_detalle["Lote"].astype(str) == str(lote_actual)) & (
+                            df_detalle["Proceso"].astype(str) == str(proceso_actual)
+                        )
+                    else:
+                        mask_current = df_detalle["Lote"].astype(str) == str(lote_actual)
+                else:
+                    mask_current = pd.Series([False] * len(df_detalle), index=df_detalle.index)
+                current_dt = None
+                try:
+                    if mask_current.any():
+                        current_dt = df_detalle.loc[mask_current, dt_col].min()
+                except Exception:
+                    current_dt = None
+                if "Proceso" in df_detalle.columns and current_dt is not None and pd.notna(current_dt):
+                    cur_proc = None
+                    try:
+                        if mask_current.any():
+                            cur_proc = str(df_detalle.loc[mask_current, "Proceso"].iloc[0])
+                    except Exception:
+                        cur_proc = None
+                    if cur_proc:
+                        in_proc = df_detalle["Proceso"].astype(str) == cur_proc
+                    else:
+                        in_proc = pd.Series([True] * len(df_detalle), index=df_detalle.index)
+                    before_current = in_proc & (df_detalle[dt_col] < current_dt)
+                    after_current = in_proc & (df_detalle[dt_col] > current_dt)
+                else:
+                    before_current = pd.Series([False] * len(df_detalle), index=df_detalle.index)
+                    after_current = pd.Series([False] * len(df_detalle), index=df_detalle.index)
+                mask_other = ~mask_current
+                mask_past = mask_other & before_current
+                mask_future = mask_other & after_current
+                # Anteriores: ya completados
+                df_detalle.loc[mask_past, "Cjs Vaciadas"] = cjs_plan[mask_past]
+                df_detalle.loc[mask_past, "Cjs Restantes"] = 0
+                # Posteriores: aún no iniciados
+                df_detalle.loc[mask_future, "Cjs Vaciadas"] = 0
+                df_detalle.loc[mask_future, "Cjs Restantes"] = cjs_plan[mask_future]
+        except Exception:
+            pass
+
+        # Dejar solo registros ya procesados + lote actual
+        try:
+            if "Cjs Vaciadas" in df_detalle.columns:
+                cjs_vac = pd.to_numeric(df_detalle["Cjs Vaciadas"], errors="coerce").fillna(0)
+                if "Proceso" in df_detalle.columns and proceso_actual and lote_actual is not None:
+                    mask_current = (df_detalle["Lote"].astype(str) == str(lote_actual)) & (
+                        df_detalle["Proceso"].astype(str) == str(proceso_actual)
+                    )
+                elif lote_actual is not None:
+                    mask_current = df_detalle["Lote"].astype(str) == str(lote_actual)
+                else:
+                    mask_current = pd.Series([False] * len(df_detalle), index=df_detalle.index)
+                keep_mask = (cjs_vac > 0) | mask_current
+                df_detalle = df_detalle.loc[keep_mask]
+        except Exception:
+            pass
+
         columnas_existentes = [c for c in columnas_ordenadas if c in df_detalle.columns]
         df_detalle = df_detalle[columnas_existentes]
         
@@ -2148,6 +2226,20 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev):
                     "if": {"column_id": "Tiempo Detenido"},
                     "color": "#b91c1c",
                     "fontWeight": "900",
+                }
+            )
+        if lote_actual and "Lote" in df_detalle.columns:
+            if proceso_actual and "Proceso" in df_detalle.columns:
+                query = f'{{Lote}} = "{lote_actual}" && {{Proceso}} = "{proceso_actual}"'
+            else:
+                query = f'{{Lote}} = "{lote_actual}"'
+            style_conditional.append(
+                {
+                    "if": {"filter_query": query},
+                    "backgroundColor": "rgba(16,185,129,0.10)",
+                    "fontWeight": "800",
+                    "borderTop": "1px solid rgba(16,185,129,0.18)",
+                    "borderBottom": "1px solid rgba(16,185,129,0.18)",
                 }
             )
     else:

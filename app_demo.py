@@ -831,6 +831,74 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
             columnas_existentes = [c for c in columnas_ordenadas if c in detalle_df.columns]
             df_detalle_para_tabla = detalle_df.copy()
 
+            # Dejar solo registros ya procesados + lote actual
+            try:
+                if "Cjs Vaciadas" in df_detalle_para_tabla.columns:
+                    cjs_vac = pd.to_numeric(df_detalle_para_tabla["Cjs Vaciadas"], errors="coerce").fillna(0)
+                    if lote_actual is not None:
+                        mask_current = df_detalle_para_tabla["Lote"].astype(str) == str(lote_actual)
+                    else:
+                        mask_current = pd.Series([False] * len(df_detalle_para_tabla), index=df_detalle_para_tabla.index)
+                    keep_mask = (cjs_vac > 0) | mask_current
+                    df_detalle_para_tabla = df_detalle_para_tabla.loc[keep_mask]
+            except Exception:
+                pass
+
+            # Ajustar "Cjs Vaciadas" / "Cjs Restantes" para lotes no actuales:
+            # - Lotes anteriores al actual: Vaciadas = Planificadas, Restantes = 0.
+            # - Lotes posteriores al actual: Vaciadas = 0, Restantes = Planificadas.
+            try:
+                if (
+                    "Cjs Restantes" in df_detalle_para_tabla.columns
+                    and "Cjs Planificadas" in df_detalle_para_tabla.columns
+                    and "Cjs Vaciadas" in df_detalle_para_tabla.columns
+                ):
+                    cjs_plan = pd.to_numeric(df_detalle_para_tabla["Cjs Planificadas"], errors="coerce").fillna(0)
+                    dt_col = "_orden_dt"
+                    if "Fecha y Hora" in df_detalle_para_tabla.columns:
+                        df_detalle_para_tabla[dt_col] = pd.to_datetime(
+                            df_detalle_para_tabla["Fecha y Hora"], format="%d/%m/%Y %H:%M:%S", errors="coerce"
+                        )
+                    else:
+                        df_detalle_para_tabla[dt_col] = pd.NaT
+                    if lote_actual is not None:
+                        mask_current = df_detalle_para_tabla["Lote"].astype(str) == str(lote_actual)
+                    else:
+                        mask_current = pd.Series([False] * len(df_detalle_para_tabla), index=df_detalle_para_tabla.index)
+                    current_dt = None
+                    try:
+                        if mask_current.any():
+                            current_dt = df_detalle_para_tabla.loc[mask_current, dt_col].min()
+                    except Exception:
+                        current_dt = None
+                    if "Proceso" in df_detalle_para_tabla.columns and current_dt is not None and pd.notna(current_dt):
+                        cur_proc = None
+                        try:
+                            if mask_current.any():
+                                cur_proc = str(df_detalle_para_tabla.loc[mask_current, "Proceso"].iloc[0])
+                        except Exception:
+                            cur_proc = None
+                        if cur_proc:
+                            in_proc = df_detalle_para_tabla["Proceso"].astype(str) == cur_proc
+                        else:
+                            in_proc = pd.Series([True] * len(df_detalle_para_tabla), index=df_detalle_para_tabla.index)
+                        before_current = in_proc & (df_detalle_para_tabla[dt_col] < current_dt)
+                        after_current = in_proc & (df_detalle_para_tabla[dt_col] > current_dt)
+                    else:
+                        before_current = pd.Series([False] * len(df_detalle_para_tabla), index=df_detalle_para_tabla.index)
+                        after_current = pd.Series([False] * len(df_detalle_para_tabla), index=df_detalle_para_tabla.index)
+                    mask_other = ~mask_current
+                    mask_past = mask_other & before_current
+                    mask_future = mask_other & after_current
+                    # Anteriores: ya completados
+                    df_detalle_para_tabla.loc[mask_past, "Cjs Vaciadas"] = cjs_plan[mask_past]
+                    df_detalle_para_tabla.loc[mask_past, "Cjs Restantes"] = 0
+                    # Posteriores: aún no iniciados
+                    df_detalle_para_tabla.loc[mask_future, "Cjs Vaciadas"] = 0
+                    df_detalle_para_tabla.loc[mask_future, "Cjs Restantes"] = cjs_plan[mask_future]
+            except Exception:
+                pass
+
             # Convertir columnas numéricas a string para filtrado
             for col in ["Cjs Planificadas", "Cjs Vaciadas", "Cjs Restantes", "Peso (Kg)"]:
                 if col in df_detalle_para_tabla.columns:
@@ -842,15 +910,14 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
             # Resaltar lote actual
             style_conditional = []
             if lote_actual and "Lote" in df_detalle_para_tabla.columns:
-                for i, row in enumerate(data):
-                    if str(row.get("Lote", "")).strip() == str(lote_actual).strip():
-                        style_conditional.append({
-                            "if": {"row_index": i},
-                            "backgroundColor": "rgba(16,185,129,0.10)",
-                            "fontWeight": "800",
-                            "borderTop": "1px solid rgba(16,185,129,0.18)",
-                            "borderBottom": "1px solid rgba(16,185,129,0.18)",
-                        })
+                query = f'{{Lote}} = "{lote_actual}"'
+                style_conditional.append({
+                    "if": {"filter_query": query},
+                    "backgroundColor": "rgba(16,185,129,0.10)",
+                    "fontWeight": "800",
+                    "borderTop": "1px solid rgba(16,185,129,0.18)",
+                    "borderBottom": "1px solid rgba(16,185,129,0.18)",
+                })
         else:
             data, columns, style_conditional = [], [], []
 

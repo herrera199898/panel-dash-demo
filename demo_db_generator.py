@@ -185,7 +185,7 @@ class DemoDatabaseGenerator:
         self.conn.commit()
 
     def generate_lot_data(self, num_lotes=50):
-        """Generar datos de lotes para simulación"""
+        """Generar datos de lotes para simulacion (determinista, sin aleatoriedad)"""
         cursor = self.conn.cursor()
 
         # Limpiar datos existentes
@@ -197,32 +197,32 @@ class DemoDatabaseGenerator:
 
         lotes_data = []
         now = datetime.now()
+        step_hours = 6
+        base_time = now - timedelta(hours=step_hours * max(1, num_lotes - 1), minutes=10)
 
         for i in range(num_lotes):
-            # Generar lote aleatorio
-            lote_num = f"{random.randint(1000, 9999):04d}"
-            proveedor = random.choice(self.proveedores)
-            producto = random.choice(self.empresa_config["productos"])
-            proceso = random.choice(self.empresa_config["procesos"])
-            variedad = random.choice(producto["variedades"])
+            # Lote determinista (sin aleatoriedad)
+            lote_num = f"{1000 + i:04d}"
+            proveedor = self.proveedores[i % len(self.proveedores)]
+            producto = self.empresa_config["productos"][i % len(self.empresa_config["productos"])]
+            proceso = self.empresa_config["procesos"][i % len(self.empresa_config["procesos"])]
+            variedad = producto["variedades"][i % len(producto["variedades"])]
 
-            # Datos de producción (cantidades reducidas para pruebas más rápidas)
-            unidades_planificadas = random.randint(50, 200)  # Reducido de 500-2000 a 50-200
-            # Para el primer lote (i==0), asegurar que tenga datos recientes y progreso
-            if i == 0:
-                # Lote activo: entre 30% y 80% completado
-                unidades_vaciadas = int(unidades_planificadas * random.uniform(0.3, 0.8))
-                fecha_lectura = now - timedelta(minutes=random.randint(1, 60))  # Última hora
+            # Datos de produccion deterministas
+            unidades_planificadas = 50 + ((i * 13) % 151)  # 50-200
+            fecha_lectura = base_time + timedelta(hours=i * step_hours)
+
+            if i == num_lotes - 1:
+                # Lote activo (el mas reciente): parcial
+                unidades_vaciadas = int(unidades_planificadas * 0.5)
             else:
-                unidades_vaciadas = random.randint(0, unidades_planificadas)
-                # Fechas aleatorias en el pasado
-                dias_atras = random.randint(1, 30)
-                fecha_lectura = now - timedelta(days=dias_atras, hours=random.randint(0, 23))
-            
+                # Lotes anteriores: completos
+                unidades_vaciadas = unidades_planificadas
+
             unidades_restantes = unidades_planificadas - unidades_vaciadas
 
-            # Peso en gramos (convertir a kg después)
-            peso_promedio_kg = random.uniform(0.8, 2.5)  # kg por caja
+            # Peso en gramos (convertir a kg despues)
+            peso_promedio_kg = 1.5  # fijo para consistencia
             peso_netto = unidades_vaciadas * peso_promedio_kg * 1000  # en gramos
 
             lote_data = {
@@ -236,15 +236,15 @@ class DemoDatabaseGenerator:
                 "variedad": variedad,
                 "peso_netto": peso_netto,
                 "fecha_lectura": fecha_lectura,
-                "producto_codigo": producto["codigo"]
+                "producto_codigo": producto["codigo"],
             }
 
             lotes_data.append(lote_data)
 
-            # Obtener exportador para este lote
-            exportador = random.choice(self.exportadores)
+            # Obtener exportador determinista para este lote
+            exportador = self.exportadores[i % len(self.exportadores)]
             exportador_nombre = exportador["nombre"]
-            
+
             # Insertar en VW_LottiIngresso
             cursor.execute("""
                 INSERT INTO VW_LottiIngresso
@@ -262,7 +262,7 @@ class DemoDatabaseGenerator:
                 lote_data["peso_netto"],
                 lote_data["fecha_lectura"],
                 lote_data["proveedor_nombre"],
-                exportador_nombre
+                exportador_nombre,
             ))
 
             # Insertar lote en PROD_Lotto para relaciones
@@ -273,8 +273,8 @@ class DemoDatabaseGenerator:
 
             lote_id = cursor.lastrowid
 
-            # Vincular con exportador aleatorio
-            exportador = random.choice(self.exportadores)
+            # Vincular con exportador determinista
+            exportador = self.exportadores[i % len(self.exportadores)]
             cursor.execute("""
                 INSERT INTO PROD_Unita_OUT (UOUT_Lotto_FK, UOUT_Esportatore_FK, UOUT_Data_Lettura)
                 VALUES (?, ?, ?)
@@ -312,7 +312,7 @@ class DemoDatabaseGenerator:
                     "variedad": row[5],
                     "peso_netto": row[6],
                     "proveedor_nombre": row[7],
-                    "exportador_nombre": row[8] if len(row) > 8 else random.choice(self.exportadores)["nombre"]
+                    "exportador_nombre": row[8] if len(row) > 8 else self.exportadores[0]["nombre"]
                 }
             else:
                 # Datos por defecto si no hay lotes (cantidades reducidas)
@@ -327,8 +327,8 @@ class DemoDatabaseGenerator:
                     "proveedor_nombre": "Campo Verde Ltda."
                 }
 
-        # Obtener exportador (del lote o aleatorio si no existe)
-        exportador_nombre = lote.get("exportador_nombre") or random.choice(self.exportadores)["nombre"]
+        # Obtener exportador (del lote o determinista si no existe)
+        exportador_nombre = lote.get("exportador_nombre") or self.exportadores[0]["nombre"]
         
         # Insertar datos actuales
         cursor.execute("""
@@ -568,7 +568,7 @@ class DemoDatabaseGenerator:
                    UnitaIn, Varieta, PesoNetto, ProductorNombre
             FROM VW_LottiIngresso
             WHERE UnitaRestanti > 0
-            ORDER BY RANDOM() LIMIT 1
+            ORDER BY DataLettura DESC LIMIT 1
         """)
         row = cursor.fetchone()
 

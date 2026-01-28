@@ -235,8 +235,10 @@ class DemoDatabaseGenerator:
 
                 unidades_restantes = unidades_planificadas - unidades_vaciadas
 
-                peso_promedio_kg = 1.5  # fijo para consistencia
-                peso_netto = unidades_vaciadas * peso_promedio_kg * 1000  # gramos
+                # Peso total del lote (kg) en rango 3500-12000, determinista
+                rango_kg = 12000 - 3500
+                peso_total_kg = 3500 + ((idx * 743) % (rango_kg + 1))
+                peso_netto = float(peso_total_kg) * 1000  # gramos (total del lote)
 
                 records.append({
                     "codigo_proveedor": proveedor["codigo"],
@@ -543,18 +545,33 @@ class DemoDatabaseGenerator:
             unidades_planificadas = row[4]
             unidades_actuales = row[5]
             peso_actual = row[6]
+            # Obtener peso total del lote desde VW_LottiIngresso para mantener rango realista
+            try:
+                cursor.execute(
+                    """
+                    SELECT PesoNetto
+                    FROM VW_LottiIngresso
+                    WHERE CodiceLotto = ? AND CodiceProcesso = ?
+                    ORDER BY DataLettura DESC LIMIT 1
+                    """,
+                    (row[3], row[2]),
+                )
+                row_total = cursor.fetchone()
+                peso_total_lote = float(row_total[0]) if row_total and row_total[0] is not None else None
+            except Exception:
+                peso_total_lote = None
 
             if incrementar_progreso and unidades_actuales < unidades_planificadas:
                 # Incrementar progreso (simular producción) - incremento mayor para pruebas más rápidas
                 incremento_cajas = random.randint(2, 8)  # Aumentado de 1-5 a 2-8 para avanzar más rápido
                 nuevas_unidades = min(unidades_actuales + incremento_cajas, unidades_planificadas)
 
-                # Calcular nuevo peso basado en el peso por caja original (mantener consistencia)
-                # Obtener peso por caja del peso actual y unidades actuales
-                if unidades_actuales > 0 and peso_actual > 0:
+                # Calcular peso por caja basado en el peso total del lote
+                if peso_total_lote and unidades_planificadas > 0:
+                    kg_por_caja = (peso_total_lote / 1000) / unidades_planificadas
+                elif unidades_actuales > 0 and peso_actual > 0:
                     kg_por_caja = (peso_actual / 1000) / unidades_actuales  # kg por caja
                 else:
-                    # Si no hay datos previos, usar un valor fijo razonable
                     kg_por_caja = 1.2  # kg por caja promedio
                 
                 nuevo_peso = nuevas_unidades * kg_por_caja * 1000  # en gramos
@@ -574,9 +591,10 @@ class DemoDatabaseGenerator:
                     WHERE LottoCodice = ?
                 """, (nuevas_unidades, nuevo_peso, datetime.now(), row[3]))
 
-                # También actualizar en VW_LottiIngresso (mantener exportador existente)
-                # Calcular peso total del lote (basado en unidades planificadas)
-                peso_total_lote = unidades_planificadas * kg_por_caja * 1000  # en gramos
+                # Tambien actualizar en VW_LottiIngresso (mantener exportador existente)
+                # Mantener el peso total del lote en el rango definido
+                if peso_total_lote is None and unidades_planificadas > 0:
+                    peso_total_lote = unidades_planificadas * kg_por_caja * 1000  # en gramos
                 cursor.execute("""
                     UPDATE VW_LottiIngresso
                     SET UnitaIn = ?, UnitaRestanti = ?, PesoNetto = ?

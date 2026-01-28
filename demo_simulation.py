@@ -48,15 +48,6 @@ class ProductionSimulator:
 
     def _update_cycle(self):
         """Ciclo de actualización de datos"""
-        # #region agent log
-        import json
-        log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\debug.log"
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"demo_simulation.py:_update_cycle:entry","message":"Update cycle started","data":{"update_interval":self.update_interval},"timestamp":int(time.time()*1000)}) + "\n")
-                f.flush()
-        except: pass
-        # #endregion
         try:
             # Conectar a la base de datos
             self.generator.create_connection()

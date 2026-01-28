@@ -476,15 +476,6 @@ class DemoDatabaseGenerator:
 
     def update_production_data(self, lote_actual=None, incrementar_progreso=True):
         """Actualizar datos de producción para simular cambios en tiempo real"""
-        # #region agent log
-        import json
-        log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\debug.log"
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"demo_db_generator.py:update_production_data:entry","message":"Update production data called","data":{"incrementar_progreso":incrementar_progreso},"timestamp":int(time.time()*1000)}) + "\n")
-                f.flush()
-        except: pass
-        # #endregion
         cursor = self.conn.cursor()
 
         # Obtener lote actual
@@ -495,14 +486,6 @@ class DemoDatabaseGenerator:
             ORDER BY DataAcquisizione DESC LIMIT 1
         """)
         row = cursor.fetchone()
-
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"demo_db_generator.py:update_production_data:row_fetched","message":"Row fetched from DB","data":{"row_found":row is not None,"unidades_planificadas":row[4] if row else None,"unidades_actuales":row[5] if row else None,"peso_actual":row[6] if row else None},"timestamp":int(time.time()*1000)}) + "\n")
-                f.flush()
-        except: pass
-        # #endregion
 
         if row:
             unidades_planificadas = row[4]
@@ -539,14 +522,6 @@ class DemoDatabaseGenerator:
                 
                 nuevo_peso = nuevas_unidades * kg_por_caja * 1000  # en gramos
 
-                # #region agent log
-                try:
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"demo_db_generator.py:update_production_data:before_update","message":"Before update","data":{"unidades_actuales":unidades_actuales,"nuevas_unidades":nuevas_unidades,"incremento_cajas":incremento_cajas,"kg_por_caja":kg_por_caja,"nuevo_peso_gramos":nuevo_peso,"lote_codice":row[3]},"timestamp":int(time.time()*1000)}) + "\n")
-                        f.flush()
-                except: pass
-                # #endregion
-
                 # Actualizar datos actuales
                 cursor.execute("""
                     UPDATE VW_MON_Partita_Corrente
@@ -569,22 +544,8 @@ class DemoDatabaseGenerator:
                     row[3],
                     row[2]
                 ))
-
-                # #region agent log
-                try:
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"demo_db_generator.py:update_production_data:after_update","message":"After update","data":{"nuevas_unidades":nuevas_unidades,"peso_total_lote_gramos":peso_total_lote,"update_success":True},"timestamp":int(time.time()*1000)}) + "\n")
-                        f.flush()
-                except: pass
-                # #endregion
             else:
-                # #region agent log
-                try:
-                    with open(log_path, "a", encoding="utf-8") as f:
-                        f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"B","location":"demo_db_generator.py:update_production_data:no_update","message":"No update needed","data":{"incrementar_progreso":incrementar_progreso,"unidades_actuales":unidades_actuales,"unidades_planificadas":unidades_planificadas,"condition_met":incrementar_progreso and unidades_actuales < unidades_planificadas},"timestamp":int(time.time()*1000)}) + "\n")
-                        f.flush()
-                except: pass
-                # #endregion
+                pass
 
         self.conn.commit()
 

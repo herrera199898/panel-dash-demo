@@ -1,5 +1,5 @@
-﻿====================================================================
-INSTRUCCIONES DE INSTALACION Y EJECUCION - PANEL DASH FRUTISIMA
+====================================================================
+INSTRUCCIONES DE INSTALACION Y EJECUCION - PANEL DASH (DEMO)
 ====================================================================
 
 Este proyecto incluye scripts automaticos para instalar y ejecutar
@@ -9,18 +9,9 @@ instalado previamente.
 OPCIONES DISPONIBLES:
 ---------------------
 
-1. scripts\\instalar-y-ejecutar.bat (RECOMENDADO PARA PRINCIPIANTES)
-   - Script basico y sencillo
-   - Verifica si Python esta instalado
-   - Si Python no esta, intenta instalarlo automaticamente (winget); si no, muestra instrucciones
-   - Instala todas las dependencias automaticamente
-   - Ejecuta la aplicacion
-
-2. scripts\\instalar-y-ejecutar-avanzado.bat (RECOMENDADO SI TIENES WINGET)
-   - Script avanzado con instalacion automatica
-   - Intenta instalar Python automaticamente (requiere winget)
-   - Instala todas las dependencias
-   - Ejecuta la aplicacion
+1. scripts\\instalar-y-ejecutar.bat (RECOMENDADO)
+   - Instala dependencias de Python
+   - Inicia el modo DEMO completo (SQLite + simulacion + dashboard)
 
 COMO USAR:
 ----------
@@ -39,15 +30,12 @@ COMO USAR:
 
 4. Para detener la aplicacion, presiona Ctrl+C en la ventana
 
-REQUISITOS PREVIOS (si no se instalan automaticamente):
+REQUISITOS PREVIOS:
 --------------------------------------------------------
 
 1. Python 3.8 o superior
    - Descarga: https://www.python.org/downloads/
    - IMPORTANTE: Marca "Add Python to PATH" durante la instalacion
-
-   - Descarga: https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server
-   - Si tienes winget, el instalador intentará instalarlo automáticamente (puede requerir admin)
 
 NOTAS IMPORTANTES:
 ------------------
@@ -64,7 +52,7 @@ NOTAS IMPORTANTES:
 - Si la ventana se cierra de golpe, ejecuta el .bat desde una consola (CMD/PowerShell) para ver el error:
   * Abre CMD en la carpeta del proyecto y corre: scripts\\instalar-y-ejecutar.bat
 
-- El script debe estar en la misma carpeta que app.py y requirements.txt
+- El script debe estar en la misma carpeta que app_demo.py y requirements.txt
 - (Alternativa) Si usas los .bat dentro de scripts, tambien funciona: el script se ubica solo.
 
 SOLUCION DE PROBLEMAS:
@@ -79,18 +67,16 @@ SOLUCION DE PROBLEMAS:
    -> Verifica tu conexion a Internet
    -> Intenta ejecutar como Administrador
 
-3. Error de conexion a la base de datos
-   -> Verifica la conexion de red al servidor de base de datos
-
-5. Se abre pero muestra todo en 0 / N/A
-   -> Normalmente significa que NO pudo conectarse a la base de datos (ODBC/credenciales/red).
+3. Se abre pero muestra todo en 0 / N/A
+   -> En DEMO esto suele indicar que la base SQLite no se generó o quedó vacía.
+   -> Solución rápida: ejecutar `python demo_db_generator.py` y luego `python run_demo.py --mode full`.
 
 4. La aplicacion no se abre en el navegador
    -> Abre manualmente: http://localhost:8050
    -> Verifica que no haya otro programa usando el puerto 8050
 
 
-ARRANQUE AUTOMATICO (HTTPS CON CADDY):
+ARRANQUE AUTOMATICO (OPCIONAL - HTTPS CON CADDY):
 -------------------------------------
 
 Objetivo: que al iniciar sesión en Windows ya est\u00e9 disponible:
@@ -104,7 +90,7 @@ Objetivo: que al iniciar sesión en Windows ya est\u00e9 disponible:
    - Ejecuta PowerShell:
      scripts\\startup\\install-startup-shortcut.ps1
 
-3) Reinicia sesi\u00f3n o el PC. Se iniciar\u00e1n:
+3) Reinicia sesión o el PC. Se iniciarán:
    - Caddy (puerto 8443) y la URL HTTPS
    - (Opcional) La app Python/Dash se inicia manualmente por el usuario
 

@@ -31,5 +31,5 @@ start "" /min powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "Start-Sleep -Seconds 1; " ^
   "Start-Process (('https://{0}:8443/' -f $env:COMPUTERNAME))"
 
-python app.py
+python app_demo.py
 exit /b %errorlevel%

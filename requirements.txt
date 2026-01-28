@@ -1,11 +1,4 @@
-streamlit
 pandas
-pyodbc
 plotly
-plyer
-streamlit-aggrid
 dash
-openpyxl
 python-dotenv
-# Para la versión demo con SQLite (viene incluido con Python)
-# sqlite3

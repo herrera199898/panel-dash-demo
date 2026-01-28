@@ -1,4 +1,4 @@
-﻿"""
+"""
 Módulo de funciones para obtener datos de la base de datos
 """
 import pandas as pd
@@ -79,51 +79,6 @@ def get_produttore_dict():
     """
     try:
         conn = get_connection_unitec()
-
-        # Consulta optimizada (según tu esquema): PROD_Unita_OUT.UOUT_Lotto_FK -> PROD_Lotto.LOT_ID
-        # y PROD_Unita_OUT.UOUT_Esportatore_FK -> ANA_Esportatore.ESP_ID
-        try:
-            cursor = conn.cursor()
-            placeholders = ",".join(["?"] * len(lotto_variants))
-            query_fast = f"""
-            SELECT TOP 1 ana.ESP_Esportatore
-            FROM PROD_Unita_OUT uout
-            INNER JOIN PROD_Lotto lot ON uout.UOUT_Lotto_FK = lot.LOT_ID
-            INNER JOIN ANA_Esportatore ana ON uout.UOUT_Esportatore_FK = ana.ESP_ID
-            WHERE lot.LOT_Codice_Lotto IN ({placeholders})
-              AND ana.ESP_Esportatore IS NOT NULL
-              AND LTRIM(RTRIM(ana.ESP_Esportatore)) != ''
-            """
-            cursor.execute(query_fast, lotto_variants)
-            row = cursor.fetchone()
-            if row and row[0]:
-                exportador = str(row[0]).strip()
-                if exportador:
-                    conn.close()
-                    return exportador
-        except Exception:
-            # Fallback si LOT_Codice_Lotto no es texto o hay diferencias de esquema
-            try:
-                cursor = conn.cursor()
-                placeholders = ",".join(["?"] * len(lotto_variants))
-                query_fast2 = f"""
-                SELECT TOP 1 ana.ESP_Esportatore
-                FROM PROD_Unita_OUT uout
-                INNER JOIN PROD_Lotto lot ON uout.UOUT_Lotto_FK = lot.LOT_ID
-                INNER JOIN ANA_Esportatore ana ON uout.UOUT_Esportatore_FK = ana.ESP_ID
-                WHERE LTRIM(RTRIM(CAST(lot.LOT_Codice_Lotto AS varchar(50)))) IN ({placeholders})
-                  AND ana.ESP_Esportatore IS NOT NULL
-                  AND LTRIM(RTRIM(ana.ESP_Esportatore)) != ''
-                """
-                cursor.execute(query_fast2, lotto_variants)
-                row = cursor.fetchone()
-                if row and row[0]:
-                    exportador = str(row[0]).strip()
-                    if exportador:
-                        conn.close()
-                        return exportador
-            except Exception:
-                pass
         query = """
         SELECT PRO_Codice_Produttore, PRO_Produttore
         FROM ANA_Produttore
@@ -1174,16 +1129,6 @@ def get_exportador_nombre_demo(lotto_codice):
     """Versión simplificada para modo DEMO (SQLite)
     Obtiene el exportador directamente desde VW_MON_Partita_Corrente o VW_LottiIngresso
     """
-    # #region agent log
-    import json
-    import os
-    try:
-        log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\debug.log"
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:entry","message":"Function entry","data":{"lotto_codice":str(lotto_codice)},"timestamp":int(__import__("time").time()*1000)}) + "\n")
-    except: pass
-    # #endregion
-    
     try:
         if not lotto_codice or lotto_codice == "N/A":
             return "N/A"
@@ -1200,30 +1145,13 @@ def get_exportador_nombre_demo(lotto_codice):
             LIMIT 1
             """
             df = read_sql_adapted(query, conn, params=[lotto_codice])
-            # #region agent log
-            try:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:method1","message":"Query VW_MON_Partita_Corrente result","data":{"found":not df.empty,"rows":len(df) if not df.empty else 0},"timestamp":int(__import__("time").time()*1000)}) + "\n")
-            except: pass
-            # #endregion
             if not df.empty and 'EsportatoreDescrizione' in df.columns:
                 exportador = str(df.iloc[0]['EsportatoreDescrizione']).strip()
                 if exportador and exportador.upper() != "N/A":
                     conn.close()
-                    # #region agent log
-                    try:
-                        with open(log_path, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:success","message":"Exportador found","data":{"exportador":exportador},"timestamp":int(__import__("time").time()*1000)}) + "\n")
-                    except: pass
-                    # #endregion
                     return exportador
         except Exception as e1:
-            # #region agent log
-            try:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:method1_error","message":"Error in method1","data":{"error":str(e1)},"timestamp":int(__import__("time").time()*1000)}) + "\n")
-            except: pass
-            # #endregion
+            logger.debug("DEMO exportador method1 error: %s", e1)
             pass
         
         # Método 2: Buscar en VW_LottiIngresso (fallback)
@@ -1236,45 +1164,17 @@ def get_exportador_nombre_demo(lotto_codice):
             LIMIT 1
             """
             df2 = read_sql_adapted(query2, conn, params=[lotto_codice])
-            # #region agent log
-            try:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:method2","message":"Query VW_LottiIngresso result","data":{"found":not df2.empty,"rows":len(df2) if not df2.empty else 0},"timestamp":int(__import__("time").time()*1000)}) + "\n")
-            except: pass
-            # #endregion
             if not df2.empty and 'EsportatoreDescrizione' in df2.columns:
                 exportador = str(df2.iloc[0]['EsportatoreDescrizione']).strip()
                 if exportador and exportador.upper() != "N/A":
                     conn.close()
-                    # #region agent log
-                    try:
-                        with open(log_path, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:success2","message":"Exportador found in fallback","data":{"exportador":exportador},"timestamp":int(__import__("time").time()*1000)}) + "\n")
-                    except: pass
-                    # #endregion
                     return exportador
         except Exception as e2:
-            # #region agent log
-            try:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:method2_error","message":"Error in method2","data":{"error":str(e2)},"timestamp":int(__import__("time").time()*1000)}) + "\n")
-            except: pass
-            # #endregion
+            logger.debug("DEMO exportador method2 error: %s", e2)
             pass
         
         conn.close()
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:not_found","message":"Exportador not found","data":{},"timestamp":int(__import__("time").time()*1000)}) + "\n")
-        except: pass
-        # #endregion
         return "N/A"
     except Exception as e:
-        # #region agent log
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"A","location":"functions.py:get_exportador_nombre_demo:exception","message":"Exception in function","data":{"error":str(e)},"timestamp":int(__import__("time").time()*1000)}) + "\n")
-        except: pass
-        # #endregion
+        logger.debug("DEMO exportador unexpected error: %s", e)
         return "N/A"

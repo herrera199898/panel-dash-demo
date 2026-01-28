@@ -1,4 +1,4 @@
-﻿"""
+"""
 Aplicación principal en Dash - VERSIÓN DEMO CORREGIDA
 Dashboard completo con datos ficticios igual que el original
 """
@@ -251,35 +251,6 @@ def update_demo_progress():
         else:
             kg_por_caja = 1.0
         peso_actual = nuevas_unidades * kg_por_caja * 1000
-
-        # #region agent log
-        try:
-            import json as _json
-            log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\progress.log"
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(
-                    _json.dumps(
-                        {
-                            "ts": now.isoformat(),
-                            "shift_type": shift_type,
-                            "shift_start": shift_start.isoformat(),
-                            "shift_end": shift_end.isoformat(),
-                            "lote": current.get("lote"),
-                            "proceso": current.get("proceso"),
-                            "lot_start": lot_start.isoformat(),
-                            "lot_end": lot_end.isoformat(),
-                            "plan": unita_pianificate,
-                            "progress_ratio": round(progress_ratio, 4),
-                            "nuevas_unidades": nuevas_unidades,
-                            "peso_actual": peso_actual,
-                            "schedule_count": len(schedule) if schedule else 0,
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
 
         cur.execute(
             """
@@ -593,16 +564,6 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
 
         lote_actual = datos_lote["Lote"] if datos_lote and datos_lote.get("Lote") else None
         
-        # #region agent log
-        import json
-        log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\debug.log"
-        try:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"sessionId":"debug-session","runId":"run1","hypothesisId":"C","location":"app_demo.py:actualizar_panel:data_read","message":"Data read from DB","data":{"lote_actual":str(lote_actual) if lote_actual else None,"cajas_planificadas":datos_lote.get("Cajas Planificadas") if datos_lote else None,"cajas_vaciadas":datos_lote.get("Cajas Vaciadas") if datos_lote else None,"kg_totales":datos_lote.get("PesoNetto") if datos_lote else None},"timestamp":int(time.time()*1000)}) + "\n")
-                f.flush()
-        except: pass
-        # #endregion
-
         # Obtener exportador
         exportador = None
         try:

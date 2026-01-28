@@ -359,8 +359,22 @@ def get_current_lote_from_detalle():
     Retorna un diccionario con los datos más precisos para el análisis gráfico"""
     try:
         conn = get_connection_unitec()
-        
-        # Obtener el registro más reciente (último lote procesándose)
+
+        now = datetime.datetime.now()
+        day_start = datetime.time(7, 0)
+        night_start = datetime.time(17, 0)
+        night_end = datetime.time(4, 0)
+        t = now.time()
+
+        if t >= day_start and t < night_start:
+            shift_start = datetime.datetime.combine(now.date(), day_start)
+            shift_end = datetime.datetime.combine(now.date(), night_start)
+        else:
+            shift_date = now.date() if t >= night_start else (now - datetime.timedelta(days=1)).date()
+            shift_start = datetime.datetime.combine(shift_date, night_start)
+            shift_end = datetime.datetime.combine(shift_date + datetime.timedelta(days=1), night_end)
+
+        # Obtener el registro más reciente del turno actual y no futuro
         query = """
         SELECT TOP 1
             CodiceProduttore,
@@ -372,9 +386,10 @@ def get_current_lote_from_detalle():
             PesoNetto,
             DataLettura
         FROM VW_LottiIngresso
+        WHERE DataLettura >= ? AND DataLettura <= ? AND DataLettura <= ?
         ORDER BY DataLettura DESC
         """
-        df = read_sql_adapted(query, conn)
+        df = read_sql_adapted(query, conn, params=[shift_start, shift_end, now])
         conn.close()
         
         if df.empty:

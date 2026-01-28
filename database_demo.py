@@ -31,7 +31,9 @@ def get_connection():
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM VW_LottiIngresso")
         count = cur.fetchone()[0]
-        if count < 18:
+        # Con datos fijos por turno, el total puede ser menor a 18 (por ejemplo, 9-10 filas).
+        # Solo regenerar si la tabla está vacía.
+        if count < 1:
             conn.close()
             print("[DB] Datos demo incompletos. Regenerando...")
             from demo_db_generator import DemoDatabaseGenerator

@@ -6,7 +6,6 @@ import sqlite3
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import random
 import time
 
 DEMO_FIXED_CAJAS_TOTALES = 200
@@ -40,11 +39,11 @@ class DemoDatabaseGenerator:
 
         # Datos maestros
         self.proveedores = [
-            {"codigo": "CSG001", "nombre": "Campo Verde Ltda."},
-            {"codigo": "CSG002", "nombre": "Hacienda del Valle"},
-            {"codigo": "CSG003", "nombre": "Agrícola Los Andes"},
-            {"codigo": "CSG004", "nombre": "Frutícola Patagonia"},
-            {"codigo": "CSG005", "nombre": "Campo Norte S.A."},
+            {"codigo": "CSG001", "nombre": "ValleVerde Ltda."},
+            {"codigo": "CSG002", "nombre": "Hacienda Central"},
+            {"codigo": "CSG003", "nombre": "Andes Produce"},
+            {"codigo": "CSG004", "nombre": "AgroPatagonia Sur"},
+            {"codigo": "CSG005", "nombre": "NorteFruit SpA"},
         ]
 
         self.exportadores = [
@@ -196,109 +195,76 @@ class DemoDatabaseGenerator:
         cursor.execute("DELETE FROM PROD_Lotto")
         cursor.execute("DELETE FROM PROD_Unita_OUT")
 
-        def _build_shift_records(count, start_dt, end_dt, start_index, partial_last):
-            records = []
-            if count <= 0:
-                return records
-            total_seconds = max(0, int((end_dt - start_dt).total_seconds()))
-            if partial_last and count > 1:
-                end_prev = end_dt - timedelta(minutes=45)
-                if end_prev < start_dt:
-                    end_prev = start_dt
-                prev_seconds = max(0, int((end_prev - start_dt).total_seconds()))
-                step = prev_seconds / float(count - 2) if count - 2 > 0 and prev_seconds > 0 else 0
-                times = [start_dt + timedelta(seconds=int(round(i * step))) for i in range(count - 1)]
-                last_time = end_dt - timedelta(minutes=30)
-                if last_time < start_dt:
-                    last_time = start_dt
-                times.append(last_time)
-            elif count == 1:
-                times = [end_dt]
+        def _build_fixed_shift_records(shift_date, shift_type):
+            if shift_type == "day":
+                rows = [
+                    ("07:00", "CSG004", "AgroPatagonia Sur", "EMP001", "1008", 154, 9702, "Gala Premium"),
+                    ("08:00", "CSG005", "NorteFruit SpA", "EMP002", "1009", 167, 10521, "Williams"),
+                    ("09:00", "CSG001", "ValleVerde Ltda.", "CAL001", "1010", 180, 11340, "Rainier"),
+                    ("10:00", "CSG002", "Hacienda Central", "CAL002", "1011", 193, 12159, "Flame"),
+                    ("11:00", "CSG003", "Andes Produce", "CAL003", "1012", 55, 3465, "Gala Roja"),
+                    ("12:00", "CSG004", "AgroPatagonia Sur", "EMP001", "1013", 68, 4284, "Packham"),
+                    ("13:00", "CSG005", "NorteFruit SpA", "EMP002", "1014", 81, 5103, "Sweetheart"),
+                    ("14:00", "CSG001", "ValleVerde Ltda.", "CAL001", "1015", 94, 5922, "Thompson"),
+                    ("15:00", "CSG002", "Hacienda Central", "CAL002", "1016", 107, 6741, "Gala Verde"),
+                    ("16:00", "CSG003", "Andes Produce", "CAL003", "1017", 120, 7560, "Tardía"),
+                ]
             else:
-                step = total_seconds / float(count - 1) if total_seconds > 0 else 0
-                times = [start_dt + timedelta(seconds=int(round(i * step))) for i in range(count)]
-            for i, fecha_lectura in enumerate(times):
-                idx = start_index + i
-                lote_num = f"{1000 + idx:04d}"
-                proveedor = self.proveedores[idx % len(self.proveedores)]
-                producto = self.empresa_config["productos"][idx % len(self.empresa_config["productos"])]
-                proceso = self.empresa_config["procesos"][idx % len(self.empresa_config["procesos"])]
-                variedad = producto["variedades"][idx % len(producto["variedades"])]
+                rows = [
+                    ("17:00", "CSG004", "AgroPatagonia Sur", "EMP001", "1008", 158, 9986, "Gala Premium"),
+                    ("18:05", "CSG005", "NorteFruit SpA", "EMP002", "1009", 163, 10236, "Williams"),
+                    ("19:10", "CSG001", "ValleVerde Ltda.", "CAL001", "1010", 176, 11176, "Rainier"),
+                    ("20:15", "CSG002", "Hacienda Central", "CAL002", "1011", 189, 11888, "Flame"),
+                    ("21:10", "CSG003", "Andes Produce", "CAL003", "1012", 58, 3619, "Gala Roja"),
+                    ("22:05", "CSG004", "AgroPatagonia Sur", "EMP001", "1013", 71, 4480, "Packham"),
+                    ("23:00", "CSG005", "NorteFruit SpA", "EMP002", "1014", 79, 4945, "Sweetheart"),
+                    ("00:20", "CSG001", "ValleVerde Ltda.", "CAL001", "1015", 97, 6111, "Thompson"),
+                    ("01:55", "CSG002", "Hacienda Central", "CAL002", "1016", 104, 6594, "Gala Verde"),
+                    ("03:25", "CSG003", "Andes Produce", "CAL003", "1017", 116, 7274, "Tardía"),
+                ]
 
-                unidades_planificadas = 50 + ((idx * 13) % 151)  # 50-200
-                if partial_last and i == len(times) - 1:
-                    unidades_vaciadas = int(unidades_planificadas * 0.5)
-                    # Inicio teorico del lote actual (cercano al presente, sin actualizarse luego)
-                    fecha_lectura = times[-1]
-                else:
-                    unidades_vaciadas = unidades_planificadas
-
-                unidades_restantes = unidades_planificadas - unidades_vaciadas
-
-                # Peso total del lote (kg) en rango 3500-12000, determinista
-                rango_kg = 12000 - 3500
-                peso_total_kg = 3500 + ((idx * 743) % (rango_kg + 1))
-                peso_netto = float(peso_total_kg) * 1000  # gramos (total del lote)
-
+            records = []
+            for row in rows:
+                time_str, codigo_proveedor, proveedor_nombre, codigo_proceso, codigo_lote, cajas, kg, variedad = row
+                base_date = shift_date
+                hora = datetime.strptime(time_str, "%H:%M").time()
+                if shift_type == "night" and hora < datetime.strptime("07:00", "%H:%M").time():
+                    base_date = shift_date + timedelta(days=1)
+                fecha_lectura = datetime.combine(base_date, hora)
+                peso_netto = float(kg) * 1000
+                unidades_planificadas = int(cajas)
+                unidades_vaciadas = int(cajas)
+                unidades_restantes = 0
+                exportador_nombre = self.exportadores[(int(codigo_lote) - 1000) % len(self.exportadores)]["nombre"]
                 records.append({
-                    "codigo_proveedor": proveedor["codigo"],
-                    "proveedor_nombre": proveedor["nombre"],
-                    "codigo_proceso": proceso["codigo"],
-                    "codigo_lote": lote_num,
+                    "codigo_proveedor": codigo_proveedor,
+                    "proveedor_nombre": proveedor_nombre,
+                    "codigo_proceso": codigo_proceso,
+                    "codigo_lote": codigo_lote,
                     "unidades_planificadas": unidades_planificadas,
                     "unidades_vaciadas": unidades_vaciadas,
                     "unidades_restantes": unidades_restantes,
                     "variedad": variedad,
                     "peso_netto": peso_netto,
                     "fecha_lectura": fecha_lectura,
-                    "producto_codigo": producto["codigo"],
-                    "exportador_nombre": self.exportadores[idx % len(self.exportadores)]["nombre"],
+                    "producto_codigo": None,
+                    "exportador_nombre": exportador_nombre,
                 })
             return records
 
         now = datetime.now()
-        day_start = datetime.combine(now.date(), datetime.strptime("07:00", "%H:%M").time())
-        day_end = datetime.combine(now.date(), datetime.strptime("17:00", "%H:%M").time())
-        night_start = datetime.combine(now.date(), datetime.strptime("17:30", "%H:%M").time())
-        night_end = datetime.combine(now.date(), datetime.strptime("04:00", "%H:%M").time())
-
-        # Determinar turno actual
         t = now.time()
-        is_night = t >= night_start.time() or t < night_end.time()
+        day_start_time = datetime.strptime("07:00", "%H:%M").time()
+        night_start_time = datetime.strptime("17:00", "%H:%M").time()
 
-        lotes_data = []
-        idx = 0
-
-        if is_night:
-            if t < night_end.time():
-                # Noche que comenzo ayer
-                cur_start = night_start - timedelta(days=1)
-                cur_end = now
-                # Dia previo completo
-                prev_day_start = day_start - timedelta(days=1)
-                prev_day_end = day_end - timedelta(days=1)
-                lotes_data += _build_shift_records(10, prev_day_start, prev_day_end, idx, partial_last=False)
-                idx += 10
-            else:
-                # Noche que comienza hoy
-                cur_start = night_start
-                cur_end = now
-                # Dia de hoy completo
-                lotes_data += _build_shift_records(10, day_start, day_end, idx, partial_last=False)
-                idx += 10
-            lotes_data += _build_shift_records(8, cur_start, cur_end, idx, partial_last=True)
-            idx += 8
+        if t >= day_start_time and t < night_start_time:
+            shift_type = "day"
+            shift_date = now.date()
         else:
-            # Turno dia en curso
-            cur_start = day_start
-            cur_end = now
-            # Noche anterior completa
-            prev_night_start = night_start - timedelta(days=1)
-            prev_night_end = night_end
-            lotes_data += _build_shift_records(8, prev_night_start, prev_night_end, idx, partial_last=False)
-            idx += 8
-            lotes_data += _build_shift_records(10, cur_start, cur_end, idx, partial_last=True)
-            idx += 10
+            shift_type = "night"
+            shift_date = now.date() if t >= night_start_time else (now - timedelta(days=1)).date()
+
+        lotes_data = _build_fixed_shift_records(shift_date, shift_type)
 
         for lote_data in lotes_data:
             cursor.execute("""
@@ -412,29 +378,28 @@ class DemoDatabaseGenerator:
 
         now = datetime.now()
 
-        # Calcular fecha del turno
-        if turno_actual == 2 and now.hour < 8:
-            business_date = (now - timedelta(days=1)).date()
-            turno_inicio = datetime.combine(business_date, datetime.strptime("20:00", "%H:%M").time())
-        else:
+        t = now.time()
+        day_start_time = datetime.strptime("07:00", "%H:%M").time()
+        night_start_time = datetime.strptime("17:00", "%H:%M").time()
+
+        if t >= day_start_time and t < night_start_time:
+            turno_actual = 1
             business_date = now.date()
-            turno_inicio = datetime.combine(business_date, datetime.strptime("08:00" if turno_actual == 1 else "20:00", "%H:%M").time())
-
-        # Generar datos realistas del turno
-        horas_transcurridas = (now - turno_inicio).total_seconds() / 3600
-        if horas_transcurridas < 0:
-            horas_transcurridas = 0
-
-        # Estimaciones por hora (reducidas para pruebas más rápidas)
-        cajas_por_hora = random.randint(20, 60)  # Reducido de 50-150 a 20-60
-        kg_por_hora = cajas_por_hora * random.uniform(1.0, 2.0)
-
-        # Totales acumulados
-        cajas_totales = int(cajas_por_hora * horas_transcurridas)
-        kg_totales = kg_por_hora * horas_transcurridas
-
-        # Simular algunos minutos de detención
-        fermo_minuti = random.uniform(0, 30) if random.random() < 0.3 else 0
+            turno_inicio = datetime.combine(business_date, day_start_time)
+            cajas_totales = 1219
+            kg_totales = 76797
+            cajas_por_hora = 122
+            kg_por_hora = 7680
+            fermo_minuti = 0
+        else:
+            turno_actual = 2
+            business_date = now.date() if t >= night_start_time else (now - timedelta(days=1)).date()
+            turno_inicio = datetime.combine(business_date, night_start_time)
+            cajas_totales = 1211
+            kg_totales = 76308
+            cajas_por_hora = 110
+            kg_por_hora = 6937
+            fermo_minuti = 0
 
         cursor.execute("""
             INSERT INTO VW_MON_Produttivita_Turno_Corrente
@@ -456,7 +421,7 @@ class DemoDatabaseGenerator:
         self.conn.commit()
 
     def generate_historic_data(self, num_records=100):
-        """Generar datos históricos para análisis de tendencias"""
+        """Generar datos históricos para análisis de tendencias (determinista)."""
         cursor = self.conn.cursor()
 
         # Limpiar datos históricos
@@ -465,16 +430,14 @@ class DemoDatabaseGenerator:
         now = datetime.now()
 
         for i in range(num_records):
-            # Generar datos históricos aleatorios
-            dias_atras = random.randint(1, 90)
+            dias_atras = (i % 90) + 1
             fecha_base = now - timedelta(days=dias_atras)
 
-            lote_num = f"{random.randint(1000, 9999):04d}"
-            proceso = random.choice(self.empresa_config["procesos"])["codigo"]
+            lote_num = f"{1000 + (i % 9000):04d}"
+            proceso = self.empresa_config["procesos"][i % len(self.empresa_config["procesos"])]["codigo"]
 
-            # Duración del lote (30 min a 4 horas)
-            duracion_minutos = random.randint(30, 240)
-            inicio = fecha_base - timedelta(minutes=random.randint(0, 480))
+            duracion_minutos = 30 + ((i * 13) % 211)
+            inicio = fecha_base - timedelta(minutes=(i * 17) % 480)
             fin = inicio + timedelta(minutes=duracion_minutos)
 
             cursor.execute("""
@@ -563,7 +526,7 @@ class DemoDatabaseGenerator:
 
             if incrementar_progreso and unidades_actuales < unidades_planificadas:
                 # Incrementar progreso (simular producción) - incremento mayor para pruebas más rápidas
-                incremento_cajas = random.randint(2, 8)  # Aumentado de 1-5 a 2-8 para avanzar más rápido
+                incremento_cajas = DEMO_FIXED_CAJAS_STEP
                 nuevas_unidades = min(unidades_actuales + incremento_cajas, unidades_planificadas)
 
                 # Calcular peso por caja basado en el peso total del lote

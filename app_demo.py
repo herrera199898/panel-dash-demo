@@ -81,6 +81,8 @@ DEMO_KG_POR_HORA = 0
 DEMO_CAJAS_STEP = 1
 DEMO_REFRESH_S = 5
 DEMO_KG_POR_HORA_TARGET = 4800
+DEMO_SHIFT_DAY = {"cajas_totales": 1219, "kg_totales": 76797, "duracion_h": 10}
+DEMO_SHIFT_NIGHT = {"cajas_totales": 1211, "kg_totales": 76308, "duracion_h": 11}
 DEMO_LOTE_PREFIX = "D"
 DEMO_PRODUCTORES = ["Campo Verde Ltda.", "Hacienda del Valle", "Agricola Los Andes", "Fruticola Patagonia", "Campo Norte S.A."]
 DEMO_VARIEDADES = ["Gala Roja", "Gala Verde", "Gala Premium", "Williams", "Packham", "Tardia", "Bing", "Rainier", "Sweetheart", "Thompson", "Red Globe", "Flame"]
@@ -140,66 +142,183 @@ def truncar_texto(valor, max_len=30):
     texto = str(valor) if valor is not None else "N/A"
     return texto[: max_len - 3] + "..." if len(texto) > max_len else texto
 
+def _get_shift_window(now):
+    day_start_time = datetime.time(7, 0)
+    night_start_time = datetime.time(17, 0)
+    night_end_time = datetime.time(4, 0)
+    t = now.time()
+
+    if t >= day_start_time and t < night_start_time:
+        shift_type = "day"
+        shift_date = now.date()
+        shift_start = datetime.datetime.combine(shift_date, day_start_time)
+        shift_end = datetime.datetime.combine(shift_date, night_start_time)
+        shift_cfg = DEMO_SHIFT_DAY
+    else:
+        shift_type = "night"
+        shift_date = now.date() if t >= night_start_time else (now - datetime.timedelta(days=1)).date()
+        shift_start = datetime.datetime.combine(shift_date, night_start_time)
+        shift_end = datetime.datetime.combine(shift_date + datetime.timedelta(days=1), night_end_time)
+        shift_cfg = DEMO_SHIFT_NIGHT
+
+    return shift_type, shift_start, shift_end, shift_cfg
+
+def _parse_db_datetime(value):
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        return value
+    if hasattr(value, "to_pydatetime"):
+        return value.to_pydatetime()
+    if isinstance(value, str):
+        try:
+            return datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception:
+            try:
+                return datetime.datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                return None
+    return None
+
+def _get_current_lot_schedule(conn, now):
+    shift_type, shift_start, shift_end, shift_cfg = _get_shift_window(now)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT CodiceProcesso, CodiceLotto, UnitaPianificate, UnitaIn, PesoNetto, DataLettura
+        FROM VW_LottiIngresso
+        WHERE DataLettura >= ? AND DataLettura <= ?
+        ORDER BY DataLettura ASC
+        """,
+        (shift_start, shift_end),
+    )
+    rows = cur.fetchall()
+    schedule = []
+    for r in rows:
+        dt = _parse_db_datetime(r[5])
+        if not dt:
+            continue
+        schedule.append(
+            {
+                "proceso": r[0],
+                "lote": r[1],
+                "plan": int(r[2] or 0),
+                "in": int(r[3] or 0),
+                "peso_total": float(r[4] or 0),
+                "dt": dt,
+            }
+        )
+    if not schedule:
+        return None, None, None, None
+
+    current_idx = None
+    for i, item in enumerate(schedule):
+        if item["dt"] <= now:
+            current_idx = i
+    if current_idx is None:
+        current_idx = 0
+
+    current = schedule[current_idx]
+    next_dt = schedule[current_idx + 1]["dt"] if current_idx + 1 < len(schedule) else shift_end
+    return current, next_dt, (shift_type, shift_start, shift_end, shift_cfg), schedule
+
 def update_demo_progress():
     """Avanza el demo en cada refresh (sin cambios aleatorios)."""
     try:
         conn = get_connection()
+        now = datetime.datetime.now()
         cur = conn.cursor()
+        current, next_dt, shift_info, schedule = _get_current_lot_schedule(conn, now)
+        if not current:
+            conn.close()
+            return
+
+        shift_type, shift_start, shift_end, shift_cfg = shift_info
+        lot_start = current["dt"]
+        lot_end = max(lot_start, next_dt)
+
+        total_sec = max(1.0, (lot_end - lot_start).total_seconds())
+        elapsed_sec = max(0.0, (now - lot_start).total_seconds())
+        progress_ratio = min(1.0, elapsed_sec / total_sec)
+
+        unita_pianificate = max(0, int(current["plan"]))
+        nuevas_unidades = int(round(unita_pianificate * progress_ratio))
+        nuevas_unidades = min(nuevas_unidades, unita_pianificate)
+
+        peso_total = float(current["peso_total"] or 0)
+        if unita_pianificate > 0 and peso_total > 0:
+            kg_por_caja = (peso_total / 1000.0) / unita_pianificate
+        else:
+            kg_por_caja = 1.0
+        peso_actual = nuevas_unidades * kg_por_caja * 1000
+
+        # #region agent log
+        try:
+            import json as _json
+            log_path = r"c:\Users\rza_w\Documents\Frutisima\Panel_dash\.cursor\progress.log"
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(
+                    _json.dumps(
+                        {
+                            "ts": now.isoformat(),
+                            "shift_type": shift_type,
+                            "shift_start": shift_start.isoformat(),
+                            "shift_end": shift_end.isoformat(),
+                            "lote": current.get("lote"),
+                            "proceso": current.get("proceso"),
+                            "lot_start": lot_start.isoformat(),
+                            "lot_end": lot_end.isoformat(),
+                            "plan": unita_pianificate,
+                            "progress_ratio": round(progress_ratio, 4),
+                            "nuevas_unidades": nuevas_unidades,
+                            "peso_actual": peso_actual,
+                            "schedule_count": len(schedule) if schedule else 0,
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        # #endregion
+
         cur.execute(
             """
-            SELECT ProcessoCodice, LottoCodice, UnitaPianificate, UnitaSvuotate, DataAcquisizione
-            FROM VW_MON_Partita_Corrente
-            ORDER BY DataAcquisizione DESC
+            SELECT ProductorNombre, Varieta, EsportatoreDescrizione
+            FROM VW_LottiIngresso
+            WHERE CodiceLotto = ? AND CodiceProcesso = ?
             LIMIT 1
-            """
+            """,
+            (current["lote"], current["proceso"]),
         )
-        row = cur.fetchone()
-        if not row:
-            conn.close()
-            return
-
-        processo_codice = row[0]
-        lotto_codice = row[1]
-        unita_pianificate = int(row[2] or 0)
-        unita_svuotate = int(row[3] or 0)
-
-                # Velocidades objetivo (kg/h) y gating por tiempo
-        kg_por_caja = DEMO_TOTAL_KG / max(1, DEMO_TOTAL_CAJAS)
-        cajas_por_hora = max(1, int(round(DEMO_KG_POR_HORA_TARGET / max(1, kg_por_caja))))
-        kg_por_hora = int(round(cajas_por_hora * kg_por_caja))
-
-        # Respetar intervalo m?nimo para avanzar (segundos por caja)
-        last_ts = row[4]
-        try:
-            if isinstance(last_ts, str):
-                last_dt = datetime.datetime.fromisoformat(last_ts.replace('Z', '+00:00'))
-            elif hasattr(last_ts, 'to_pydatetime'):
-                last_dt = last_ts.to_pydatetime()
-            else:
-                last_dt = last_ts
-        except Exception:
-            last_dt = None
-        if last_dt:
-            elapsed = (datetime.datetime.now() - last_dt).total_seconds()
-            sec_por_caja = 3600 / max(1, cajas_por_hora)
-            if elapsed < sec_por_caja:
-                conn.close()
-                return
-
-        if unita_svuotate >= unita_pianificate:
-            conn.close()
-            return
-
-        nuevas_unidades = min(unita_svuotate + DEMO_CAJAS_STEP, unita_pianificate)
-        peso_actual = nuevas_unidades * kg_por_caja * 1000  # gramos
+        row_info = cur.fetchone() or (None, None, None)
+        productor_nombre = row_info[0] or "N/A"
+        variedad_nombre = row_info[1] or "N/A"
+        exportador_nombre = row_info[2] or "N/A"
 
         cur.execute(
             """
             UPDATE VW_MON_Partita_Corrente
-            SET UnitaSvuotate = ?, PesoNetto = ?, DataAcquisizione = ?
-            WHERE LottoCodice = ?
+            SET ProduttoreDescrizione = ?,
+                VarietaDescrizione = ?,
+                ProcessoCodice = ?,
+                LottoCodice = ?,
+                UnitaPianificate = ?,
+                UnitaSvuotate = ?,
+                PesoNetto = ?,
+                DataAcquisizione = ?,
+                EsportatoreDescrizione = ?
             """,
-            (nuevas_unidades, peso_actual, datetime.datetime.now(), lotto_codice),
+            (
+                productor_nombre,
+                variedad_nombre,
+                current["proceso"],
+                current["lote"],
+                unita_pianificate,
+                nuevas_unidades,
+                peso_actual,
+                now,
+                exportador_nombre,
+            ),
         )
 
         cur.execute(
@@ -211,24 +330,37 @@ def update_demo_progress():
             (
                 nuevas_unidades,
                 max(0, unita_pianificate - nuevas_unidades),
-                DEMO_TOTAL_KG * 1000,
-                lotto_codice,
-                processo_codice,
+                peso_total,
+                current["lote"],
+                current["proceso"],
             ),
         )
+
+        shift_total_sec = max(1.0, shift_cfg["duracion_h"] * 3600.0)
+        shift_elapsed_sec = max(0.0, (now - shift_start).total_seconds())
+        shift_ratio = min(1.0, shift_elapsed_sec / shift_total_sec)
+        cajas_turno = int(round(shift_cfg["cajas_totales"] * shift_ratio))
+        kg_turno = float(shift_cfg["kg_totales"]) * shift_ratio
+        cajas_por_hora = int(round(shift_cfg["cajas_totales"] / float(shift_cfg["duracion_h"])))
+        kg_por_hora = int(round(shift_cfg["kg_totales"] / float(shift_cfg["duracion_h"])))
 
         cur.execute(
             """
             UPDATE VW_MON_Produttivita_Turno_Corrente
-            SET UnitaSvuotate = ?, UnitaSvuotateOra = ?, PesoSvuotato = ?,
-                PesoSvuotatoOra = ?, FermoMacchinaMinuti = 0, DataAcquisizione = ?
+            SET TurnoCodice = ?, TurnoGiornaliero = ?, TurnoInizio = ?,
+                PesoSvuotato = ?, PesoSvuotatoOra = ?,
+                UnitaSvuotate = ?, UnitaSvuotateOra = ?,
+                FermoMacchinaMinuti = 0, DataAcquisizione = ?
             """,
             (
-                nuevas_unidades,
-                cajas_por_hora,
-                peso_actual,
+                1 if shift_type == "day" else 2,
+                shift_start.date(),
+                shift_start,
+                kg_turno,
                 kg_por_hora,
-                datetime.datetime.now(),
+                cajas_turno,
+                cajas_por_hora,
+                now,
             ),
         )
 
@@ -916,26 +1048,34 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
         else:
             data, columns, style_conditional = [], [], []
 
-        # Calcular ETA (tiempo estimado de fin de lote) basado en datos ficticios actuales
-        cajas_restantes_eta = max(0, int(cajas_restantes or 0))
-        kg_por_caja = DEMO_TOTAL_KG / max(1, DEMO_TOTAL_CAJAS)
-        cajas_por_hora = max(1, int(round(DEMO_KG_POR_HORA_TARGET / max(1, kg_por_caja))))
-        if cajas_restantes_eta == 0:
+        # Calcular ETA (tiempo estimado de fin de lote) basado en horario real del turno
+        try:
+            conn_eta = get_connection()
+            now_eta = datetime.datetime.now()
+            current_eta, next_dt_eta, _, _ = _get_current_lot_schedule(conn_eta, now_eta)
+            conn_eta.close()
+            if current_eta and next_dt_eta:
+                fin_estimado = max(current_eta["dt"], next_dt_eta)
+                remaining_s = max(0, int((fin_estimado - now_eta).total_seconds()))
+                eta_store = {
+                    "lote": str(current_eta.get("lote")) if current_eta.get("lote") else None,
+                    "remaining_s": remaining_s,
+                    "generated_ms": int(time.time() * 1000.0),
+                    "end_iso": fin_estimado.isoformat(),
+                }
+            else:
+                eta_store = {
+                    "lote": str(lote_actual) if lote_actual else None,
+                    "remaining_s": 0,
+                    "generated_ms": int(time.time() * 1000.0),
+                    "end_iso": datetime.datetime.now().isoformat(),
+                }
+        except Exception:
             eta_store = {
                 "lote": str(lote_actual) if lote_actual else None,
                 "remaining_s": 0,
                 "generated_ms": int(time.time() * 1000.0),
                 "end_iso": datetime.datetime.now().isoformat(),
-            }
-        else:
-            eta_s = int(round((cajas_restantes_eta / cajas_por_hora) * 3600))
-            eta_s = max(0, eta_s)
-            fin_estimado = datetime.datetime.now() + datetime.timedelta(seconds=eta_s)
-            eta_store = {
-                "lote": str(lote_actual),
-                "remaining_s": eta_s,
-                "generated_ms": int(time.time() * 1000.0),
-                "end_iso": fin_estimado.isoformat(),
             }
 
         # Snapshot para optimización

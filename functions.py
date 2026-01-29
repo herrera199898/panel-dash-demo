@@ -435,6 +435,7 @@ def get_current_lote_from_detalle():
     Retorna un diccionario con los datos más precisos para el análisis gráfico"""
     try:
         conn = get_connection_unitec()
+        now_local = get_local_now()
         
         # Obtener el registro más reciente (último lote procesándose)
         query = """
@@ -448,9 +449,25 @@ def get_current_lote_from_detalle():
             PesoNetto,
             DataLettura
         FROM VW_LottiIngresso
+        WHERE DataLettura <= ?
         ORDER BY DataLettura DESC
         """
-        df = read_sql_adapted(query, conn)
+        df = read_sql_adapted(query, conn, params=[now_local])
+        if df.empty:
+            query_fallback = """
+            SELECT TOP 1
+                CodiceProduttore,
+                CodiceProcesso,
+                CodiceLotto,
+                UnitaPianificate,
+                UnitaIn,
+                Varieta,
+                PesoNetto,
+                DataLettura
+            FROM VW_LottiIngresso
+            ORDER BY DataLettura DESC
+            """
+            df = read_sql_adapted(query_fallback, conn)
         conn.close()
         
         if df.empty:

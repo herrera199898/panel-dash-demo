@@ -305,6 +305,20 @@ def update_demo_progress():
         lot_start = current["dt"]
         lot_end = max(lot_start, next_dt)
 
+        # Asegurar que los lotes anteriores queden cerrados (sin caja restante)
+        try:
+            cur.execute(
+                """
+                UPDATE VW_LottiIngresso
+                SET UnitaIn = UnitaPianificate,
+                    UnitaRestanti = 0
+                WHERE DataLettura < ? AND DataLettura >= ? AND DataLettura <= ?
+                """,
+                (lot_start, shift_start, shift_end),
+            )
+        except Exception:
+            pass
+
         total_sec = max(1.0, (lot_end - lot_start).total_seconds())
         elapsed_sec = max(0.0, (now - lot_start).total_seconds())
         progress_ratio = min(1.0, elapsed_sec / total_sec)

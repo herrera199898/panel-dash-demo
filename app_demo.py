@@ -237,11 +237,64 @@ def _get_current_lot_schedule(conn, now):
     next_dt = schedule[current_idx + 1]["dt"] if current_idx + 1 < len(schedule) else shift_end
     return current, next_dt, (shift_type, shift_start, shift_end, shift_cfg), schedule
 
+_DEMO_REGEN_STATE = {"last_key": None, "last_ts": 0.0}
+
+
+def _ensure_demo_shift_data(now):
+    if not is_demo_mode():
+        return
+    shift_type, shift_start, shift_end, _ = _get_shift_window(now)
+    shift_key = f"{shift_type}|{shift_start.date().isoformat()}"
+    if (
+        _DEMO_REGEN_STATE["last_key"] == shift_key
+        and (time.time() - float(_DEMO_REGEN_STATE["last_ts"] or 0.0)) < 300.0
+    ):
+        return
+
+    count = 0
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT COUNT(*) FROM VW_LottiIngresso
+            WHERE DataLettura >= ? AND DataLettura <= ?
+            """,
+            (shift_start, shift_end),
+        )
+        row = cur.fetchone()
+        count = int(row[0] or 0) if row else 0
+        conn.close()
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        count = 0
+
+    if count > 0:
+        _DEMO_REGEN_STATE["last_key"] = shift_key
+        _DEMO_REGEN_STATE["last_ts"] = time.time()
+        return
+
+    try:
+        from demo_db_generator import DemoDatabaseGenerator
+        from database_demo import demo_db_path
+
+        generator = DemoDatabaseGenerator(demo_db_path)
+        generator.create_database()
+        generator.close_connection()
+        _DEMO_REGEN_STATE["last_key"] = shift_key
+        _DEMO_REGEN_STATE["last_ts"] = time.time()
+    except Exception:
+        pass
+
 def update_demo_progress():
     """Avanza el demo en cada refresh (sin cambios aleatorios)."""
     try:
-        conn = get_connection()
         now = now_chile()
+        _ensure_demo_shift_data(now)
+        conn = get_connection()
         cur = conn.cursor()
         current, next_dt, shift_info, schedule = _get_current_lot_schedule(conn, now)
         if not current:

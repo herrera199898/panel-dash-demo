@@ -388,6 +388,13 @@ app.layout = html.Div([
                     ),
                     className="header-logo",
                 ),
+                html.Div(
+                    [
+                        html.H1("Gestor de Lotes", className="header-title"),
+                        html.Div("Seguimiento y control de procesos", className="header-subtitle"),
+                    ],
+                    className="header-text",
+                ),
             ], className="header-left"),
             html.Div([
                 html.Div(
@@ -423,14 +430,13 @@ app.layout = html.Div([
     # Métricas principales (igual que el original)
     html.Div(id="metricas-lote", className="metric-grid"),
 
-    # Tabs (igual que el original)
+    # Tabs (sin Orden de Vaciado)
     dcc.Tabs(
         id="tabs",
         value="tab-analisis",
         children=[
             dcc.Tab(label="Análisis Gráfico", value="tab-analisis", className="tab-analisis"),
             dcc.Tab(label="Detalle Completo", value="tab-detalle", className="tab-detalle"),
-            dcc.Tab(label="Orden de Vaciado", value="tab-orden", className="tab-orden"),
         ],
         className="tabs-container",
     ),
@@ -479,24 +485,16 @@ app.layout = html.Div([
         )
     ], id="tab-detalle-container", style={"margin": "0 1.5rem 2rem 1.5rem"}),
 
-    # Contenedor del tab de orden (igual que el original)
-    html.Div([
-        html.Div(id="orden-meta", className="filter-card"),
-        html.Div(id="orden-accordion", className="orden-accordion"),
-    ], id="tab-orden-container", style={"margin": "0 1.5rem 2rem 1.5rem", "display": "none"}),
-
-    # Intervalos para actualización automática (igual que el original)
+    # Intervalos para actualización automática
     dcc.Interval(id="interval-act", interval=5 * 1000, n_intervals=0),
     dcc.Interval(id="interval-notif", interval=60 * 1000, n_intervals=0),
     dcc.Interval(id="interval-eta", interval=5 * 1000, n_intervals=0),
-    dcc.Interval(id="interval-orden", interval=60 * 1000, n_intervals=0),
 
-    # Stores para estado (igual que el original)
+    # Stores para estado
     dcc.Store(id="endlote-notificados-store", data=[], storage_type="local"),
     dcc.Store(id="notif-payload-store"),
     dcc.Store(id="notif-permission-store"),
     dcc.Store(id="eta-store"),
-    dcc.Store(id="orden-store"),
     dcc.Store(id="panel-snapshot"),
     dcc.Store(id="client-debug-store"),
     dcc.Store(id="toggle-toast-store"),
@@ -1164,19 +1162,16 @@ def update_eta(n, eta_data):
     except Exception:
         return "--:--:--"
 
-# Callbacks para tabs (igual que el original)
+# Callbacks para tabs (Análisis Gráfico / Detalle Completo)
 @app.callback(
     [Output("tab-analisis-container", "style"),
-     Output("tab-detalle-container", "style"),
-     Output("tab-orden-container", "style")],
+     Output("tab-detalle-container", "style")],
     [Input("tabs", "value")],
 )
 def render_tab(tab_value):
     if tab_value == "tab-detalle":
-        return {"display": "none"}, {"display": "block", "margin": "0 1.5rem 2rem 1.5rem"}, {"display": "none"}
-    if tab_value == "tab-orden":
-        return {"display": "none"}, {"display": "none"}, {"display": "block", "margin": "0 1.5rem 2rem 1.5rem"}
-    return {"display": "block"}, {"display": "none"}, {"display": "none"}
+        return {"display": "none"}, {"display": "block", "margin": "0 1.5rem 2rem 1.5rem"}
+    return {"display": "block"}, {"display": "none"}
 
 if __name__ == "__main__":
     print(f"[START] Iniciando {APP_CONFIG['title']}")

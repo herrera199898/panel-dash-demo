@@ -7,12 +7,27 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import time
+import os
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 
 DEMO_FIXED_CAJAS_TOTALES = 200
 DEMO_FIXED_CAJAS_VACIADAS = 0
 DEMO_FIXED_KG_TOTALES = 4000
 DEMO_FIXED_KG_POR_HORA = 12000
 DEMO_FIXED_CAJAS_STEP = 1
+LOCAL_TZ_NAME = os.environ.get("LOCAL_TIMEZONE", "America/Santiago")
+
+
+def now_local():
+    if ZoneInfo:
+        try:
+            return datetime.now(ZoneInfo(LOCAL_TZ_NAME)).replace(tzinfo=None)
+        except Exception:
+            pass
+    return datetime.now()
 
 class DemoDatabaseGenerator:
     def __init__(self, db_path="demo_database.db"):
@@ -252,7 +267,7 @@ class DemoDatabaseGenerator:
                 })
             return records
 
-        now = datetime.now()
+        now = now_local()
         t = now.time()
         day_start_time = datetime.strptime("07:00", "%H:%M").time()
         night_start_time = datetime.strptime("17:00", "%H:%M").time()
@@ -362,7 +377,7 @@ class DemoDatabaseGenerator:
             lote["unidades_planificadas"],
             lote["unidades_vaciadas"],
             lote["peso_netto"],
-            datetime.now(),
+            now_local(),
             exportador_nombre
         ))
 
@@ -376,7 +391,7 @@ class DemoDatabaseGenerator:
         # Limpiar datos actuales
         cursor.execute("DELETE FROM VW_MON_Produttivita_Turno_Corrente")
 
-        now = datetime.now()
+        now = now_local()
 
         t = now.time()
         day_start_time = datetime.strptime("07:00", "%H:%M").time()
@@ -427,7 +442,7 @@ class DemoDatabaseGenerator:
         # Limpiar datos históricos
         cursor.execute("DELETE FROM VW_MON_Partita_Storico_Agent")
 
-        now = datetime.now()
+        now = now_local()
 
         for i in range(num_records):
             dias_atras = (i % 90) + 1
@@ -527,7 +542,7 @@ class DemoDatabaseGenerator:
                     UPDATE VW_MON_Partita_Corrente
                     SET UnitaSvuotate = ?, PesoNetto = ?, DataAcquisizione = ?
                     WHERE LottoCodice = ?
-                """, (nuevas_unidades, nuevo_peso, datetime.now(), row[3]))
+                """, (nuevas_unidades, nuevo_peso, now_local(), row[3]))
 
                 # Tambien actualizar en VW_LottiIngresso (mantener exportador existente)
                 # Mantener el peso total del lote en el rango definido

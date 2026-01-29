@@ -1,10 +1,12 @@
-"""
+﻿"""
 Módulo de funciones para obtener datos de la base de datos
 """
 import pandas as pd
 import logging
 import importlib
 import datetime
+import os
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 import plotly.graph_objects as go
@@ -19,6 +21,79 @@ get_connection = db_module.get_connection
 get_connection_unitec = db_module.get_connection_unitec
 
 _EXPORTADOR_PLAN = None
+
+_DB_TIME_OFFSET_HOURS = 0.0
+try:
+    _DB_TIME_OFFSET_HOURS = float(os.environ.get("DB_TIME_OFFSET_HOURS", "0") or 0)
+except Exception:
+    _DB_TIME_OFFSET_HOURS = 0.0
+
+_LOCAL_TZ_NAME = os.environ.get("LOCAL_TIMEZONE", "America/Santiago")
+_DB_TIME_SOURCE_TZ_NAME = os.environ.get("DB_TIME_SOURCE_TZ", "UTC")
+
+try:
+    _LOCAL_TZ = ZoneInfo(_LOCAL_TZ_NAME) if _LOCAL_TZ_NAME else None
+except Exception:
+    _LOCAL_TZ = None
+
+try:
+    _DB_SOURCE_TZ = ZoneInfo(_DB_TIME_SOURCE_TZ_NAME) if _DB_TIME_SOURCE_TZ_NAME else None
+except Exception:
+    _DB_SOURCE_TZ = None
+
+
+def _to_local_naive(dt):
+    if not dt or not isinstance(dt, datetime.datetime):
+        return dt
+    try:
+        if dt.tzinfo is None:
+            if _DB_SOURCE_TZ is not None:
+                dt = dt.replace(tzinfo=_DB_SOURCE_TZ)
+        if _LOCAL_TZ is not None and dt.tzinfo is not None:
+            dt = dt.astimezone(_LOCAL_TZ)
+        if _DB_TIME_OFFSET_HOURS:
+            dt = dt + datetime.timedelta(hours=_DB_TIME_OFFSET_HOURS)
+        return dt.replace(tzinfo=None)
+    except Exception:
+        return dt
+
+
+def _to_local_naive_series(series):
+    if series is None:
+        return series
+    try:
+        s = pd.to_datetime(series, errors="coerce")
+    except Exception:
+        return series
+    try:
+        if getattr(s.dt, "tz", None) is None and _DB_SOURCE_TZ is not None:
+            s = s.dt.tz_localize(_DB_SOURCE_TZ, ambiguous="NaT", nonexistent="NaT")
+    except Exception:
+        pass
+    try:
+        if _LOCAL_TZ is not None and getattr(s.dt, "tz", None) is not None:
+            s = s.dt.tz_convert(_LOCAL_TZ)
+    except Exception:
+        pass
+    if _DB_TIME_OFFSET_HOURS:
+        try:
+            s = s + pd.to_timedelta(_DB_TIME_OFFSET_HOURS, unit="h")
+        except Exception:
+            pass
+    try:
+        s = s.dt.tz_localize(None)
+    except Exception:
+        pass
+    return s
+
+
+def get_local_now():
+    try:
+        if _LOCAL_TZ is not None:
+            return datetime.datetime.now(_LOCAL_TZ).replace(tzinfo=None)
+    except Exception:
+        pass
+    return datetime.datetime.now()
 
 def adapt_sql_query(query):
     """
@@ -79,6 +154,51 @@ def get_produttore_dict():
     """
     try:
         conn = get_connection_unitec()
+
+        # Consulta optimizada (según tu esquema): PROD_Unita_OUT.UOUT_Lotto_FK -> PROD_Lotto.LOT_ID
+        # y PROD_Unita_OUT.UOUT_Esportatore_FK -> ANA_Esportatore.ESP_ID
+        try:
+            cursor = conn.cursor()
+            placeholders = ",".join(["?"] * len(lotto_variants))
+            query_fast = f"""
+            SELECT TOP 1 ana.ESP_Esportatore
+            FROM PROD_Unita_OUT uout
+            INNER JOIN PROD_Lotto lot ON uout.UOUT_Lotto_FK = lot.LOT_ID
+            INNER JOIN ANA_Esportatore ana ON uout.UOUT_Esportatore_FK = ana.ESP_ID
+            WHERE lot.LOT_Codice_Lotto IN ({placeholders})
+              AND ana.ESP_Esportatore IS NOT NULL
+              AND LTRIM(RTRIM(ana.ESP_Esportatore)) != ''
+            """
+            cursor.execute(query_fast, lotto_variants)
+            row = cursor.fetchone()
+            if row and row[0]:
+                exportador = str(row[0]).strip()
+                if exportador:
+                    conn.close()
+                    return exportador
+        except Exception:
+            # Fallback si LOT_Codice_Lotto no es texto o hay diferencias de esquema
+            try:
+                cursor = conn.cursor()
+                placeholders = ",".join(["?"] * len(lotto_variants))
+                query_fast2 = f"""
+                SELECT TOP 1 ana.ESP_Esportatore
+                FROM PROD_Unita_OUT uout
+                INNER JOIN PROD_Lotto lot ON uout.UOUT_Lotto_FK = lot.LOT_ID
+                INNER JOIN ANA_Esportatore ana ON uout.UOUT_Esportatore_FK = ana.ESP_ID
+                WHERE LTRIM(RTRIM(CAST(lot.LOT_Codice_Lotto AS varchar(50)))) IN ({placeholders})
+                  AND ana.ESP_Esportatore IS NOT NULL
+                  AND LTRIM(RTRIM(ana.ESP_Esportatore)) != ''
+                """
+                cursor.execute(query_fast2, lotto_variants)
+                row = cursor.fetchone()
+                if row and row[0]:
+                    exportador = str(row[0]).strip()
+                    if exportador:
+                        conn.close()
+                        return exportador
+            except Exception:
+                pass
         query = """
         SELECT PRO_Codice_Produttore, PRO_Produttore
         FROM ANA_Produttore
@@ -179,6 +299,7 @@ def get_detalle_lotti_ingresso():
         # Fecha y Hora
         if 'DataLettura' in df.columns:
             df['DataLettura'] = pd.to_datetime(df['DataLettura'], errors='coerce')
+            df['DataLettura'] = _to_local_naive_series(df['DataLettura'])
             resultado['Fecha y Hora'] = df['DataLettura'].dt.strftime('%d/%m/%Y %H:%M:%S')
         else:
             resultado['Fecha y Hora'] = ''
@@ -314,22 +435,8 @@ def get_current_lote_from_detalle():
     Retorna un diccionario con los datos más precisos para el análisis gráfico"""
     try:
         conn = get_connection_unitec()
-
-        now = datetime.datetime.now()
-        day_start = datetime.time(7, 0)
-        night_start = datetime.time(17, 0)
-        night_end = datetime.time(4, 0)
-        t = now.time()
-
-        if t >= day_start and t < night_start:
-            shift_start = datetime.datetime.combine(now.date(), day_start)
-            shift_end = datetime.datetime.combine(now.date(), night_start)
-        else:
-            shift_date = now.date() if t >= night_start else (now - datetime.timedelta(days=1)).date()
-            shift_start = datetime.datetime.combine(shift_date, night_start)
-            shift_end = datetime.datetime.combine(shift_date + datetime.timedelta(days=1), night_end)
-
-        # Obtener el registro más reciente del turno actual y no futuro
+        
+        # Obtener el registro más reciente (último lote procesándose)
         query = """
         SELECT TOP 1
             CodiceProduttore,
@@ -341,10 +448,9 @@ def get_current_lote_from_detalle():
             PesoNetto,
             DataLettura
         FROM VW_LottiIngresso
-        WHERE DataLettura >= ? AND DataLettura <= ? AND DataLettura <= ?
         ORDER BY DataLettura DESC
         """
-        df = read_sql_adapted(query, conn, params=[shift_start, shift_end, now])
+        df = read_sql_adapted(query, conn)
         conn.close()
         
         if df.empty:
@@ -358,19 +464,6 @@ def get_current_lote_from_detalle():
         # Convertir peso de gramos a kilogramos
         peso_netto_kg = float(df.iloc[0]['PesoNetto']) / 1000 if pd.notna(df.iloc[0]['PesoNetto']) else 0
         
-        fecha_lote = ""
-        try:
-            if pd.notna(df.iloc[0]["DataLettura"]):
-                fecha_lote = pd.to_datetime(df.iloc[0]["DataLettura"], errors="coerce")
-                if pd.notna(fecha_lote):
-                    fecha_lote = fecha_lote.strftime("%d/%m/%Y %H:%M:%S")
-                else:
-                    fecha_lote = ""
-            else:
-                fecha_lote = ""
-        except Exception:
-            fecha_lote = ""
-
         return {
             "CSG": str(df.iloc[0]['CodiceProduttore']) if pd.notna(df.iloc[0]['CodiceProduttore']) else "N/A",
             "Proceso": str(df.iloc[0]['CodiceProcesso']) if pd.notna(df.iloc[0]['CodiceProcesso']) else "N/A",
@@ -379,8 +472,7 @@ def get_current_lote_from_detalle():
             "UnitaPianificate": unita_pianificate,
             "UnitaSvuotate": unita_svuotate,
             "UnitaRestanti": unita_restanti,
-            "PesoNetto": peso_netto_kg,
-            "Fecha y Hora": fecha_lote,
+            "PesoNetto": peso_netto_kg
         }
         
     except Exception as e:
@@ -470,6 +562,8 @@ def get_turno_corrente_info():
                 turno_inicio_dt = None
         except Exception:
             turno_inicio_dt = None
+
+        turno_inicio_dt = _to_local_naive(turno_inicio_dt)
 
         return {"turn": turn_int, "business_date": business_date, "turno_inicio": turno_inicio_dt}
     except Exception:
@@ -575,6 +669,8 @@ def get_lotti_inizio_fine_map(max_rows: int = 800):
                 end_dt = end.to_pydatetime() if hasattr(end, "to_pydatetime") else end
             except Exception:
                 end_dt = None
+            start_dt = _to_local_naive(start_dt)
+            end_dt = _to_local_naive(end_dt)
             out[key] = {"start": start_dt, "end": end_dt}
         return out
     except Exception:

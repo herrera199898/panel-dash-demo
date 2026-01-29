@@ -16,6 +16,10 @@ import threading
 import warnings
 import random
 import importlib
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 
 import pandas as pd
 import dash
@@ -88,6 +92,17 @@ DEMO_PRODUCTORES = ["Campo Verde Ltda.", "Hacienda del Valle", "Agricola Los And
 DEMO_VARIEDADES = ["Gala Roja", "Gala Verde", "Gala Premium", "Williams", "Packham", "Tardia", "Bing", "Rainier", "Sweetheart", "Thompson", "Red Globe", "Flame"]
 DEMO_PROCESOS = ["CAL001", "CAL002", "CAL003", "EMP001", "EMP002"]
 DEMO_EXPORTADORES = ["Exportadora Global S.A.", "Frutas del Mundo Ltda.", "AgroExport Premium", "International Fruits Corp.", "Premium Produce Export"]
+
+CHILE_TZ_NAME = "America/Santiago"
+
+
+def now_chile():
+    if ZoneInfo:
+        try:
+            return datetime.datetime.now(ZoneInfo(CHILE_TZ_NAME)).replace(tzinfo=None)
+        except Exception:
+            pass
+    return datetime.datetime.now()
 
 app = dash.Dash(__name__, title=APP_CONFIG['title'])
 server = app.server
@@ -226,7 +241,7 @@ def update_demo_progress():
     """Avanza el demo en cada refresh (sin cambios aleatorios)."""
     try:
         conn = get_connection()
-        now = datetime.datetime.now()
+        now = now_chile()
         cur = conn.cursor()
         current, next_dt, shift_info, schedule = _get_current_lot_schedule(conn, now)
         if not current:
@@ -537,7 +552,7 @@ print("[DEBUG] Registering actualizar_panel callback...")
 def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, eta_prev):
     print(f"[DEBUG] actualizar_panel FUNCTION CALLED: n_intervals={_}")
     try:
-        now = datetime.datetime.now()
+        now = now_chile()
         update_demo_progress()
         try:
             cajas_por_hora_turno = get_cajas_por_hora_turno() or 0
@@ -634,7 +649,7 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
         turno_s = 0
         fermo_min = 0
         try:
-            now_turno = datetime.datetime.now()
+            now_turno = now_chile()
             _, shift_start_dt, shift_end_dt, _ = _get_shift_window(now_turno)
             now_clamped = min(now_turno, shift_end_dt)
             turno_s = int((now_clamped - shift_start_dt).total_seconds())
@@ -664,7 +679,7 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
         cajas_acum_turno = 0
         kg_acum_turno = 0
         try:
-            now_sum = datetime.datetime.now()
+            now_sum = now_chile()
             conn_sum = get_connection()
             current_sum, next_dt_sum, _, schedule_sum = _get_current_lot_schedule(conn_sum, now_sum)
             conn_sum.close()
@@ -883,7 +898,7 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
                         mask_current = df_detalle_para_tabla["Lote"].astype(str) == str(lote_actual)
                     else:
                         mask_current = pd.Series([False] * len(df_detalle_para_tabla), index=df_detalle_para_tabla.index)
-                    now = datetime.datetime.now()
+                    now = now_chile()
                     t = now.time()
                     day_start = datetime.time(7, 0)
                     day_end = datetime.time(17, 0)
@@ -1021,7 +1036,7 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
         # Calcular ETA (tiempo estimado de fin de lote) basado en horario real del turno
         try:
             conn_eta = get_connection()
-            now_eta = datetime.datetime.now()
+            now_eta = now_chile()
             current_eta, next_dt_eta, _, _ = _get_current_lot_schedule(conn_eta, now_eta)
             conn_eta.close()
             if current_eta and next_dt_eta:
@@ -1038,14 +1053,14 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
                     "lote": str(lote_actual) if lote_actual else None,
                     "remaining_s": 0,
                     "generated_ms": int(time.time() * 1000.0),
-                    "end_iso": datetime.datetime.now().isoformat(),
+                    "end_iso": now_chile().isoformat(),
                 }
         except Exception:
             eta_store = {
                 "lote": str(lote_actual) if lote_actual else None,
                 "remaining_s": 0,
                 "generated_ms": int(time.time() * 1000.0),
-                "end_iso": datetime.datetime.now().isoformat(),
+                "end_iso": now_chile().isoformat(),
             }
 
         # Snapshot para optimización
@@ -1100,7 +1115,7 @@ def actualizar_panel(_, prev_snapshot, fermo_baseline_prev, lote_finish_prev, et
     Input("interval-eta", "n_intervals"),
 )
 def update_time_and_refresh(n):
-    hora = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    hora = now_chile().strftime("%d/%m/%Y %H:%M:%S")
     # Indicador de refresh (igual que el original)
     refresh_indicator = html.Div(
         [
@@ -1135,7 +1150,7 @@ def update_eta(n, eta_data):
                 else:
                     end_dt = end_iso
 
-                now = datetime.datetime.now()
+                now = now_chile()
                 remaining_delta = end_dt - now
                 remaining = max(0, remaining_delta.total_seconds())
 
@@ -1147,7 +1162,7 @@ def update_eta(n, eta_data):
                     minutes = int((remaining % 3600) // 60)
                     seconds = int(remaining % 60)
             except Exception:
-                elapsed = (datetime.datetime.now().timestamp() * 1000 - generated_ms) / 1000
+                elapsed = (now_chile().timestamp() * 1000 - generated_ms) / 1000
                 remaining = max(0, remaining_s - elapsed)
 
             if 'hours' not in locals():
@@ -1156,7 +1171,7 @@ def update_eta(n, eta_data):
                 seconds = int(remaining % 60)
 
             result = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-            fecha_actual = datetime.datetime.now().strftime("%d/%m/%Y")
+            fecha_actual = now_chile().strftime("%d/%m/%Y")
             return f"{fecha_actual} {result}"
         return "--:--:--"
     except Exception:

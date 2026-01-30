@@ -55,6 +55,7 @@ body {
   height: 200px;
   width: auto;
   max-height: 100%;
+  max-width: 100%;
   object-fit: contain;
   display: block;
   transform: scale(1.5);
@@ -375,6 +376,35 @@ Tiempo Real
   .header-content { grid-template-columns: 1fr; align-items: flex-start; }
   .header-stats, .header-actions { justify-content: flex-start; width: 100%; }
   .update-badge.header-stat, .update-badge.header-toggle { min-width: unset; width: 100%; }
+}
+
+@media (max-width: 700px) {
+  .header-content {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "logo"
+      "title"
+      "actions"
+      "stats";
+    align-items: start;
+  }
+  .header-left { grid-area: logo; }
+  .header-center { grid-area: title; }
+  .header-actions { grid-area: actions; }
+  .header-stats { grid-area: stats; }
+  .header-logo-img {
+    height: 140px;
+    transform: none;
+  }
+  .header-title { font-size: 2rem; }
+  .update-badge.header-stat { padding: 0.45rem 0.7rem; }
+  .update-badge.header-stat .update-time { font-size: 0.95rem; }
+  .update-badge.header-stat .update-label { font-size: 0.62rem; }
+  .update-time-row { justify-content: flex-start; }
+  .refresh-indicator, .refresh-loader, .eta-clock {
+    width: 40px;
+    height: 40px;
+  }
 }
 
 /* 1 fila como en la referencia */

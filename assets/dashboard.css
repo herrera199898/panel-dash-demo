@@ -384,7 +384,9 @@ Tiempo Real
 }
 
 .metric-grid {
-  display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
   margin: 0 1.5rem 1.5rem 1.5rem;
 }
 .metric-card {
@@ -483,7 +485,7 @@ Tiempo Real
 #orden-meta.filter-card { padding: 0.75rem; }
 .orden-meta-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
 }
 .orden-meta-item {
@@ -541,7 +543,11 @@ Tiempo Real
 .orden-meta-icon-amber { background: rgba(245,158,11,0.18); border-color: rgba(245,158,11,0.28); }
 .orden-meta-icon-green { background: rgba(16,185,129,0.18); border-color: rgba(16,185,129,0.28); }
 .orden-meta-icon-rose { background: rgba(244,63,94,0.18); border-color: rgba(244,63,94,0.28); }
-.filter-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; }
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
 .filter-item {
   background: linear-gradient(180deg, #ffffff 0%, #fbfbfb 100%);
   border: 1px solid #eef2f7;
@@ -574,7 +580,12 @@ Tiempo Real
 .filter-label { font-size: 0.75rem; font-weight: 800; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
 .filter-value { font-size: 1.05rem; font-weight: 700; color: #111827; overflow-wrap: anywhere; }
 
-.charts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin: 0 1.5rem; }
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+  margin: 0 1.5rem;
+}
 .chart-card {
   background: white; padding: 1.5rem; border-radius: 12px; border: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px -1px rgba(0,0,0,0.1);
@@ -612,7 +623,11 @@ Tiempo Real
   100% { transform: translate3d(-50%, 0, 0); }
 }
 .chart-divider { border-top: 1px solid #e5e7eb; margin: 1.25rem 0 0.75rem 0; }
-.breakdown-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
 .breakdown-item { text-align: left; }
 .breakdown-label { font-size: 0.85rem; color: #6b7280; }
 .breakdown-value { font-size: 1.35rem; font-weight: 900; color: #111827; }

@@ -405,6 +405,11 @@ Tiempo Real
     width: 40px;
     height: 40px;
   }
+  .refresh-loader::after{
+    left: 16px;
+    top: 26px;
+    border-width: 8px;
+  }
 }
 
 /* 1 fila como en la referencia */
